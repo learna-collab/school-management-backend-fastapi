@@ -1,7 +1,25 @@
+import secrets
+
+from app.models.school import School
 from app.models.user import User, UserRole
 from app.repositories.admin_repository import AdminRepository
 from app.repositories.school_repository import SchoolRepository
 from app.utils.helper import hash_password
+
+
+def generate_slug(name: str):
+    return (
+        name.lower()
+        .replace("&", "")
+        .replace(",", "")
+        .replace(".", "")
+        .replace("'", "")
+        .replace(" ", "-")
+    )
+
+
+def generate_code():
+    return secrets.token_hex(3).upper()
 
 
 class AdminService:
@@ -18,6 +36,106 @@ class AdminService:
 
     async def get_schools(self, db):
         return await self.school_repo.get_schools(db)
+
+    async def create_school(
+        self,
+        db,
+        payload,
+    ):
+        slug = generate_slug(payload.school_name)
+
+        existing = await self.school_repo.get_by_slug(
+            db,
+            slug,
+        )
+
+        if existing:
+            raise ValueError("School already exists.")
+
+        school = School(
+            name=payload.school_name,
+            slug=slug,
+            code=generate_code(),
+            phone=payload.phone,
+            email=payload.admin_email,
+            website=payload.website,
+            whatsapp_number=payload.whatsapp_number,
+            state=payload.state,
+            address=payload.address,
+            description=payload.description,
+            is_active=True,
+        )
+
+        school = await self.school_repo.create(
+            db,
+            school,
+        )
+
+        admin = User(
+            first_name=payload.admin_first_name,
+            last_name=payload.admin_last_name,
+            username="admin",
+            email=payload.admin_email,
+            password_hash=hash_password(
+                payload.admin_password,
+            ),
+            role=UserRole.SCHOOL_ADMIN,
+            school_id=school.id,
+            profile_completed=True,
+        )
+
+        admin = await self.repo.create_user(
+            db,
+            admin,
+        )
+
+        return {
+            "school": school,
+            "credentials": {
+                "username": f"{school.slug}_admin",
+                "password": payload.admin_password,
+            },
+        }
+
+    async def disable_school(
+        self,
+        db,
+        school_id,
+    ):
+        school = await self.school_repo.get_by_id(
+            db,
+            school_id,
+        )
+
+        if not school:
+            return None
+
+        school.is_active = False
+
+        return await self.school_repo.save(
+            db,
+            school,
+        )
+
+    async def enable_school(
+        self,
+        db,
+        school_id,
+    ):
+        school = await self.school_repo.get_by_id(
+            db,
+            school_id,
+        )
+
+        if not school:
+            return None
+
+        school.is_active = True
+
+        return await self.school_repo.save(
+            db,
+            school,
+        )
 
     async def create_school_admin(self, db, payload):
         school = await self.school_repo.get_by_id(

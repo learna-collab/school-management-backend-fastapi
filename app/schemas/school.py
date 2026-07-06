@@ -1,6 +1,29 @@
 from pydantic import BaseModel, EmailStr
 
 
+class SchoolCreate(BaseModel):
+    # ==========================
+    # SCHOOL
+    # ==========================
+
+    school_name: str
+    website: str | None = None
+    phone: str
+    whatsapp_number: str | None = None
+    state: str
+    address: str
+    description: str | None = None
+
+    # ==========================
+    # SCHOOL ADMIN
+    # ==========================
+
+    admin_first_name: str
+    admin_last_name: str
+    admin_email: EmailStr
+    admin_password: str
+
+
 class SchoolOnboardingRequest(BaseModel):
     # School
 

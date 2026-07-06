@@ -61,3 +61,16 @@ class SchoolRepository:
         await db.delete(school)
 
         await db.commit()
+
+    async def save(
+        self,
+        db,
+        school: School,
+    ):
+        db.add(school)
+
+        await db.commit()
+
+        await db.refresh(school)
+
+        return school
