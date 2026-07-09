@@ -1,15 +1,20 @@
-# class_teacher.py
-
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import (
+    ForeignKey,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 from app.db.base import (
     Base,
-    UUIDMixin,
     TenantMixin,
     TimestampMixin,
+    UUIDMixin,
 )
 
 
@@ -37,9 +42,15 @@ class ClassTeacher(
         index=True,
     )
 
-    teacher = relationship("User")
+    teacher = relationship(
+        "User",
+        back_populates="class_assignments",
+    )
 
-    school_class = relationship("Class")
+    school_class = relationship(
+        "Class",
+        back_populates="class_teachers",
+    )
 
     __table_args__ = (
         UniqueConstraint(

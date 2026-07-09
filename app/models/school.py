@@ -6,10 +6,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from app.models.academic_session import AcademicSession
     from app.models.attendance import Attendance
-    from app.models.classes import Class
     from app.models.exam import Exam
+
+    from app.models.academic_session import AcademicSession
+    from app.models.classes import Class
     from app.models.refresh_token import RefreshToken
     from app.models.user import User
 
@@ -22,6 +23,11 @@ class School(Base, UUIDMixin, TimestampMixin):
         String(100),
         unique=True,
         index=True,
+    )
+    academic_setup_completed: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=True,
     )
 
     email: Mapped[str] = mapped_column(String(255))

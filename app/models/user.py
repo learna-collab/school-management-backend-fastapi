@@ -60,10 +60,10 @@ class User(Base, UUIDMixin, TimestampMixin, TenantMixin):
     role: Mapped[UserRole] = mapped_column(SQLEnum(UserRole))
     profile_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
-    "RefreshToken",
-    back_populates="user",
-    cascade="all, delete-orphan",
-)
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
     student_profile = relationship(
         "StudentProfile",
@@ -87,9 +87,9 @@ class User(Base, UUIDMixin, TimestampMixin, TenantMixin):
     )
 
     attendance_records = relationship(
-    "AttendanceRecord",
-    back_populates="student",
-)
+        "AttendanceRecord",
+        back_populates="student",
+    )
 
     teacher_assignments = relationship(
         "TeacherClassSubject",
@@ -106,6 +106,11 @@ class User(Base, UUIDMixin, TimestampMixin, TenantMixin):
     school = relationship(
         "School",
         back_populates="users",
+    )
+    class_assignments = relationship(
+        "ClassTeacher",
+        back_populates="teacher",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (

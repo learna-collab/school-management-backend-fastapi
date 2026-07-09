@@ -1,12 +1,18 @@
+from uuid import UUID
+
 from sqlalchemy import (
-    UUID,
     ForeignKey,
     UniqueConstraint,
 )
-from sqlalchemy.orm import mapped_column, relationship
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 from app.db.base import (
     Base,
+    TenantMixin,
     TimestampMixin,
     UUIDMixin,
 )
@@ -15,28 +21,25 @@ from app.db.base import (
 class ClassSubject(
     Base,
     UUIDMixin,
+    TenantMixin,
     TimestampMixin,
 ):
     __tablename__ = "class_subjects"
 
-    class_id = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("classes.id", ondelete="CASCADE"),
-        index=True,
-    )
-
-    subject_id = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("subjects.id", ondelete="CASCADE"),
-        index=True,
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "class_id",
-            "subject_id",
-            name="uq_class_subject",
+    class_id: Mapped[UUID] = mapped_column(
+        ForeignKey(
+            "classes.id",
+            ondelete="CASCADE",
         ),
+        index=True,
+    )
+
+    subject_id: Mapped[UUID] = mapped_column(
+        ForeignKey(
+            "subjects.id",
+            ondelete="CASCADE",
+        ),
+        index=True,
     )
 
     school_class = relationship(
@@ -47,4 +50,12 @@ class ClassSubject(
     subject = relationship(
         "Subject",
         back_populates="class_subjects",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "class_id",
+            "subject_id",
+            name="uq_class_subject",
+        ),
     )

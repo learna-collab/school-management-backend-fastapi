@@ -6,6 +6,7 @@ from . import (
     admin_registration,
     auth,
     blog,
+    class_setup_router,
     profile,
     school_admin,
     students,
@@ -25,3 +26,4 @@ api_router.include_router(school_admin.router)
 api_router.include_router(blog.router)
 api_router.include_router(academic.router)
 api_router.include_router(admin_registration.router)
+api_router.include_router(class_setup_router.router)
