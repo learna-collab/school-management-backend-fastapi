@@ -185,6 +185,13 @@ class RegistrationService:
             },
         )
 
+        await self.repo.create_student_enrollment(
+            db,
+            school_id=school_id,
+            student_id=user.id,
+            class_id=payload.class_id,
+        )
+
         return {
             "username": username,
             "password": password,
@@ -231,6 +238,12 @@ class RegistrationService:
                 "hire_date": payload.hire_date,
                 "class_id": payload.class_id,
             },
+        )
+        await self.repo.assign_teacher_to_class(
+            db,
+            school_id=school_id,
+            teacher_id=user.id,
+            class_id=payload.class_id,
         )
 
         return {
