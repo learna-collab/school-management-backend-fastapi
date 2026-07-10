@@ -2,6 +2,7 @@ import secrets
 
 from app.models.school import School
 from app.models.user import User, UserRole
+from app.models.user_credentials import UserCredential
 from app.repositories.admin_repository import AdminRepository
 from app.repositories.school_repository import SchoolRepository
 from app.utils.helper import hash_password
@@ -76,9 +77,7 @@ class AdminService:
             last_name=payload.admin_last_name,
             username="admin",
             email=payload.admin_email,
-            password_hash=hash_password(
-                payload.admin_password,
-            ),
+            password_hash=hash_password(payload.admin_password),
             role=UserRole.SCHOOL_ADMIN,
             school_id=school.id,
             profile_completed=True,
@@ -87,6 +86,18 @@ class AdminService:
         admin = await self.repo.create_user(
             db,
             admin,
+        )
+
+        credential = UserCredential(
+            school_id=school.id,
+            user_id=admin.id,
+            username=f"{school.slug}_admin",
+            password=payload.admin_password,
+        )
+
+        await self.repo.save(
+            db,
+            credential,
         )
 
         return {

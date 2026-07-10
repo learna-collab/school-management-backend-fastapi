@@ -77,3 +77,16 @@ class AdminRepository:
         await db.commit()
         await db.refresh(user)
         return user
+
+    async def save(
+        self,
+        db,
+        obj,
+    ):
+        db.add(obj)
+
+        await db.commit()
+
+        await db.refresh(obj)
+
+        return obj
