@@ -152,6 +152,8 @@ class AuthService:
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "school_id": (str(user.school_id) if user.school_id else None),
+                "school_name": (user.school.name if user.school else None),
+                "school_logo": (user.school.logo_url if user.school else None),
                 "profile_completed": user.profile_completed,
             },
         }

@@ -1,8 +1,12 @@
+import re
 import secrets
 import string
 
 from fastapi import HTTPException, status
+from sqlalchemy import func, select
 
+from app.models.user import User
+from app.models.user_credentials import UserCredential
 from app.repositories.registration_repository import registration_repo
 from app.schemas.registration import (
     ParentRegistrationCreate,
@@ -28,6 +32,51 @@ class RegistrationService:
     # PASSWORD GENERATOR
     # =====================================================
 
+    def generate_school_prefix(self, school_name: str) -> str:
+        """
+        Examples.
+
+        Lerna International School -> LIS
+        Government Secondary School -> GSS
+        Federal Government College -> FGC
+        Queen's College -> QUC
+        Green Valley Academy -> GVA
+        King's High School -> KHS
+        """
+        words = re.findall(r"[A-Za-z]+", school_name.upper())
+
+        if not words:
+            return "SCH"
+
+        # Multiple words -> first letter of first 3 words
+        if len(words) >= 3:
+            return "".join(word[0] for word in words[:3])
+
+        # Two words
+        if len(words) == 2:
+            first, second = words
+            return (first[:2] + second[:1]).ljust(3, "X")
+
+        # One word
+        return words[0][:3].ljust(3, "X")
+
+    async def generate_username(
+        self,
+        db,
+        school,
+    ) -> str:
+        prefix = self.generate_school_prefix(school.name)
+
+        total_users = await db.scalar(
+            select(func.count(User.id)).where(
+                User.school_id == school.id,
+            )
+        )
+
+        next_number = (total_users or 0) + 1
+
+        return f"{prefix}-{next_number:06d}"
+
     def generate_password(self, length: int = 10):
         alphabet = string.ascii_letters + string.digits
 
@@ -45,11 +94,8 @@ class RegistrationService:
         school_id,
         role,
         email,
-        username,
     ):
-        # ----------------------------
-        # Email already exists
-        # ----------------------------
+        # Email must be unique
         exists = await self.repo.email_exists(
             db,
             email,
@@ -61,20 +107,15 @@ class RegistrationService:
                 detail=f"{email} already exists.",
             )
 
-        # ----------------------------
-        # Username already exists
-        # ----------------------------
-        exists = await self.repo.username_exists(
+        school = await self.school_service.get_by_id(
             db,
-            username,
             school_id,
         )
 
-        if exists:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"{username} already exists.",
-            )
+        username = await self.generate_username(
+            db,
+            school,
+        )
 
         password = self.generate_password()
 
@@ -85,10 +126,22 @@ class RegistrationService:
             role=role,
             school_id=school_id,
             username=username,
-            profile_completed=True,  # add this parameter
+            profile_completed=True,
         )
 
-        return user, password
+        credential = UserCredential(
+            school_id=school_id,
+            user_id=user.id,
+            username=username,
+            password=password,
+        )
+
+        await self.repo.save(
+            db,
+            credential,
+        )
+
+        return user, username, password
 
     # =====================================================
     # REGISTER STUDENT
@@ -111,12 +164,11 @@ class RegistrationService:
                 detail="Class not found.",
             )
 
-        user, password = await self._create_user(
+        user, username, password = await self._create_user(
             db=db,
             school_id=school_id,
             role="STUDENT",
             email=payload.email,
-            username=payload.username,
         )
 
         await self.profile_service.create_profile(
@@ -132,13 +184,9 @@ class RegistrationService:
                 "class_id": payload.class_id,
             },
         )
-        school = await self.school_service.get_by_id(
-            db,
-            school_id,
-        )
 
         return {
-            "username": f"{school.slug}_{user.username}",
+            "username": username,
             "password": password,
             "user": user,
         }
@@ -164,12 +212,11 @@ class RegistrationService:
                 detail="Class not found.",
             )
 
-        user, password = await self._create_user(
+        user, username, password = await self._create_user(
             db=db,
             school_id=school_id,
             role="TEACHER",
             email=payload.email,
-            username=payload.username,
         )
 
         await self.profile_service.create_profile(
@@ -186,13 +233,8 @@ class RegistrationService:
             },
         )
 
-        school = await self.school_service.get_by_id(
-            db,
-            school_id,
-        )
-
         return {
-            "username": f"{school.slug}_{user.username}",
+            "username": username,
             "password": password,
             "user": user,
         }
@@ -207,12 +249,11 @@ class RegistrationService:
         school_id,
         payload: ParentRegistrationCreate,
     ):
-        user, password = await self._create_user(
+        user, username, password = await self._create_user(
             db=db,
             school_id=school_id,
             role="PARENT",
             email=payload.email,
-            username=payload.username,
         )
 
         await self.profile_service.create_profile(
@@ -226,13 +267,9 @@ class RegistrationService:
                 "phone": payload.phone,
             },
         )
-        school = await self.school_service.get_by_id(
-            db,
-            school_id,
-        )
 
         return {
-            "username": f"{school.slug}_{user.username}",
+            "username": username,
             "password": password,
             "user": user,
         }

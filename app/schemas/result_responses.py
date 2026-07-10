@@ -183,3 +183,26 @@ class StudentResultResponse(BaseModel):
     failed_subjects: int
 
     subjects: list[SubjectResultResponse]
+
+
+class StudentResultData(BaseModel):
+    student_id: UUID
+    student_name: str
+    class_name: str
+    session_name: str
+    term_name: str
+
+    total_score: int
+    average_score: float
+    position: int | None
+
+    passed_subjects: int
+    failed_subjects: int
+
+    subjects: list[SubjectResultResponse]
+
+
+class StudentResultApiResponse(BaseModel):
+    published: bool
+    message: str
+    data: StudentResultData | None = None

@@ -68,6 +68,12 @@ class SchoolAssignmentService:
                     "first_name": student.first_name,
                     "last_name": student.last_name,
                     "email": student.email,
+                    "username": (
+                        student.credential.username if student.credential else None
+                    ),
+                    "password": (
+                        student.credential.password if student.credential else None
+                    ),
                 }
                 for student in students
             ],
@@ -155,6 +161,12 @@ class SchoolAssignmentService:
                     "first_name": teacher.first_name,
                     "last_name": teacher.last_name,
                     "email": teacher.email,
+                    "username": (
+                        teacher.credential.username if teacher.credential else None
+                    ),
+                    "password": (
+                        teacher.credential.password if teacher.credential else None
+                    ),
                 }
                 for teacher in teachers
             ],
@@ -300,13 +312,13 @@ class SchoolAssignmentService:
     # TEACHER SUBJECT ASSIGNMENT
     # ==========================================================
     async def assign_teacher_to_class(
-    self,
-    db,
-    *,
-    teacher_id: UUID,
-    class_id: UUID,
-    school_id: UUID,
-):
+        self,
+        db,
+        *,
+        teacher_id: UUID,
+        class_id: UUID,
+        school_id: UUID,
+    ):
         assignment = await self.repo.assign_teacher_to_class(
             db=db,
             teacher_id=teacher_id,
@@ -359,13 +371,14 @@ class SchoolAssignmentService:
         return {
             "success": removed,
         }
+
     async def remove_teacher_from_class(
-    self,
-    db,
-    *,
-    teacher_id: UUID,
-    class_id: UUID,
-):
+        self,
+        db,
+        *,
+        teacher_id: UUID,
+        class_id: UUID,
+    ):
         removed = await self.repo.remove_teacher_from_class(
             db=db,
             teacher_id=teacher_id,
@@ -380,6 +393,7 @@ class SchoolAssignmentService:
                 else "Teacher not assigned to class"
             ),
         }
+
     # ==========================================================
     # CLASS MEMBERS
     # ==========================================================

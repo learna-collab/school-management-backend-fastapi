@@ -38,7 +38,6 @@ class Class(
 
     name: Mapped[str] = mapped_column(
         String(100),
-        unique=True,
         index=True,
     )
 

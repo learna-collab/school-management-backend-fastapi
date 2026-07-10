@@ -9,6 +9,7 @@ from app.core.deps import (
     RequireStudentOrSchoolAdmin,
 )
 from app.schemas.result_responses import (
+    StudentResultApiResponse,
     StudentResultResponse,
 )
 from app.services.attendance_service import attendance_service
@@ -48,7 +49,7 @@ async def get_classes(
 
 @router.get(
     "/results",
-    response_model=StudentResultResponse,
+    response_model=StudentResultApiResponse,
 )
 async def get_results(
     session_id: UUID,
@@ -56,6 +57,9 @@ async def get_results(
     db: DBSession,
     user: RequireStudent,
 ):
+    print(session_id)
+    print(term_id)
+    print(user.id)
     return await result_service.get_student_result(
         db=db,
         student=user,

@@ -83,16 +83,14 @@ class DashboardService:
         db,
         user,
     ):
-        # ClassTeacher assignments
         classes = await self.repo.get_teacher_classes(
             db,
             user.id,
         )
 
-        # TeacherClassSubject assignments
-        subject_assignments = await self.repo.get_class_assignments(
+        subject_assignments = await self.repo.get_teacher_subject_assignments(
             db,
-            classes[0].id,
+            user.id,
         )
 
         attendance_submissions = await self.repo.count_teacher_attendance(
@@ -115,21 +113,23 @@ class DashboardService:
 
         return {
             "teacher_name": f"{user.first_name} {user.last_name}",
-            "active_session": {
-                "id": str(session.id),
-                "name": session.name,
-            }
-            if session
-            else None,
-            "active_term": {
-                "id": str(term.id),
-                "name": term.name,
-            }
-            if term
-            else None,
-            # ClassTeacher
+            "active_session": (
+                {
+                    "id": str(session.id),
+                    "name": session.name,
+                }
+                if session
+                else None
+            ),
+            "active_term": (
+                {
+                    "id": str(term.id),
+                    "name": term.name,
+                }
+                if term
+                else None
+            ),
             "assigned_classes": len(classes),
-            # TeacherClassSubject
             "assigned_subjects": len({str(x.subject_id) for x in subject_assignments}),
             "lessons_created": lessons_created or 0,
             "attendance_submissions": attendance_submissions or 0,

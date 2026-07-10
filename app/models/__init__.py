@@ -26,6 +26,7 @@ from .teacher_class_subject import TeacherClassSubject
 from .template_class_subject import TemplateClassSubject
 from .terms import Term
 from .user import User
+from .user_credentials import UserCredential
 
 __all__ = [
     "AcademicLevel",
@@ -57,4 +58,5 @@ __all__ = [
     "TemplateClassSubject",
     "Term",
     "User",
+    "UserCredential",
 ]

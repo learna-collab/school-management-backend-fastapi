@@ -174,6 +174,28 @@ class DashboardRepository:
 
         return result.scalars().all()
 
+    async def get_teacher_subject_assignments(
+        self,
+        db,
+        teacher_id,
+    ):
+        result = await db.execute(
+            select(TeacherClassSubject)
+            .options(
+                selectinload(TeacherClassSubject.school_class),
+                selectinload(TeacherClassSubject.subject),
+            )
+            .where(
+                TeacherClassSubject.teacher_id == teacher_id,
+            )
+            .order_by(
+                TeacherClassSubject.class_id,
+                TeacherClassSubject.subject_id,
+            )
+        )
+
+        return result.scalars().all()
+
     async def count_teacher_lessons(
         self,
         db,

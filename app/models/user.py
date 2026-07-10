@@ -64,6 +64,12 @@ class User(Base, UUIDMixin, TimestampMixin, TenantMixin):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    credential = relationship(
+        "UserCredential",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     student_profile = relationship(
         "StudentProfile",
@@ -120,3 +126,11 @@ class User(Base, UUIDMixin, TimestampMixin, TenantMixin):
             name="uq_school_username",
         ),
     )
+
+    @property
+    def school_name(self):
+        return self.school.name if self.school else None
+
+    @property
+    def school_logo(self):
+        return self.school.logo if self.school else None

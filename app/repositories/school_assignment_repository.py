@@ -22,12 +22,14 @@ class SchoolAssignmentRepository:
         school_id: UUID,
     ):
         result = await db.execute(
-            select(User).where(
+            select(User)
+            .where(
                 and_(
                     User.school_id == school_id,
                     User.role == UserRole.STUDENT,
                 )
             )
+            .options(selectinload(User.credential))
         )
 
         return result.scalars().all()
@@ -38,12 +40,14 @@ class SchoolAssignmentRepository:
         school_id: UUID,
     ):
         result = await db.execute(
-            select(User).where(
+            select(User)
+            .where(
                 and_(
                     User.school_id == school_id,
                     User.role == UserRole.TEACHER,
                 )
             )
+            .options(selectinload(User.credential))
         )
 
         return result.scalars().all()

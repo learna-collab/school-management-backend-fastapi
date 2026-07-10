@@ -2,7 +2,9 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from jose import JWTError, jwt
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.db.database import get_db
@@ -43,7 +45,11 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception  # noqa: B904
 
-    user = await session.get(User, user_id)
+    stmt = select(User).where(User.id == user_id).options(selectinload(User.school))
+
+    result = await session.execute(stmt)
+
+    user = result.scalar_one_or_none()
 
     if not user:
         raise credentials_exception

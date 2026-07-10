@@ -17,7 +17,10 @@ from app.repositories.teacher_assignment_repository import (
     teacher_assignment_repository,
 )
 from app.repositories.term_repository import term_repo
-from app.schemas.result_responses import ResultBatchStatusResponse
+from app.schemas.result_responses import (
+    ResultBatchStatusResponse,
+    StudentResultApiResponse,
+)
 from app.schemas.result_schema import ResultStatusResponse
 
 
@@ -956,12 +959,17 @@ class ResultService:
         )
 
         if not result:
-            raise HTTPException(
-                status_code=404,
-                detail="Result has not been published.",
+            return StudentResultApiResponse(
+                published=False,
+                message="Your result has not been published yet.",
+                data=None,
             )
 
-        return ResultMapper.student_result(result)
+        return StudentResultApiResponse(
+            published=True,
+            message="Result available.",
+            data=ResultMapper.student_result(result),
+        )
 
     async def get_student_result_for_pdf(
         self,

@@ -13,7 +13,6 @@ class StudentRegistrationCreate(BaseModel):
     last_name: str
 
     email: EmailStr
-    username: str
 
     gender: str
     date_of_birth: date
@@ -32,7 +31,6 @@ class TeacherRegistrationCreate(BaseModel):
     last_name: str
 
     email: EmailStr
-    username: str
 
     qualification: str
     specialization: str
@@ -59,7 +57,6 @@ class ParentRegistrationCreate(BaseModel):
     last_name: str
 
     email: EmailStr
-    username: str
 
     occupation: str
     phone: str
