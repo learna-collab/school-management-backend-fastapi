@@ -19,6 +19,7 @@ class SubjectService:
             name=name,
             code=code,
             school_id=school_id,
+            is_custom=True,
         )
 
         return await self.repo.create(

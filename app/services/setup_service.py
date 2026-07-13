@@ -144,6 +144,7 @@ class AcademicSetupService:
                         id=subject.id,
                         name=subject.name,
                         code=subject.code,
+                        is_custom=subject.is_custom,
                     )
                 )
 
@@ -153,6 +154,7 @@ class AcademicSetupService:
                     name=school_class.name,
                     level=school_class.level,
                     sort_order=school_class.sort_order,
+                    is_custom=school_class.is_custom,
                     subjects=subjects,
                 )
             )
@@ -516,13 +518,11 @@ class AcademicSetupService:
 
             school_class = Class(
                 school_id=school_id,
-                # Keep reference to the original template
                 template_class_id=template_class.id,
-                # Allow renamed class
                 name=selected["name"],
-                # Allow changed level
                 level=selected["level"],
                 sort_order=template_class.sort_order,
+                is_custom=False,
             )
 
             school_classes.append(
@@ -583,9 +583,9 @@ class AcademicSetupService:
                 subjects[template_subject.id] = Subject(
                     school_id=school_id,
                     template_subject_id=template_subject.id,
-                    # Allow renamed subject
                     name=subject_selection["name"],
                     code=template_subject.code,
+                    is_custom=False,
                 )
 
         await self.repository.bulk_create_subjects(
@@ -680,6 +680,7 @@ class AcademicSetupService:
                     name=school_class.name,
                     level=school_class.level,
                     sort_order=school_class.sort_order,
+                    is_custom=True,
                 )
             )
 
@@ -750,6 +751,7 @@ class AcademicSetupService:
                         template_subject_id=None,
                         name=subject.name,
                         code=subject.code,
+                        is_custom=True,
                     )
 
                     db.add(school_subject)
@@ -798,6 +800,7 @@ class AcademicSetupService:
                 level=payload.level,
                 sort_order=payload.sort_order,
                 template_class_id=None,
+                is_custom=True,
             )
 
             result = await self.repository.create_class(
@@ -911,6 +914,7 @@ class AcademicSetupService:
             name=payload.name,
             code=payload.code,
             template_subject_id=None,
+            is_custom=True,
         )
 
         result = await self.repository.create_subject(

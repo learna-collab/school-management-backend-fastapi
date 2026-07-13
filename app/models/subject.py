@@ -25,6 +25,10 @@ class Subject(
         String(50),
         nullable=True,
     )
+    is_custom: Mapped[bool] = mapped_column(
+        default=False,
+        nullable=False,
+    )
 
     teacher_assignments = relationship(
         "TeacherClassSubject",

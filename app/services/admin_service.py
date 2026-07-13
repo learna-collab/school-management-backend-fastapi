@@ -72,10 +72,17 @@ class AdminService:
             school,
         )
 
+        # Generate username e.g. ABU-ADMIN
+        school_prefix = "".join(c for c in payload.school_name if c.isalnum())[
+            :3
+        ].upper()
+
+        username = f"{school_prefix}-ADMIN"
+
         admin = User(
             first_name=payload.admin_first_name,
             last_name=payload.admin_last_name,
-            username="admin",
+            username=username,
             email=payload.admin_email,
             password_hash=hash_password(payload.admin_password),
             role=UserRole.SCHOOL_ADMIN,
@@ -91,7 +98,7 @@ class AdminService:
         credential = UserCredential(
             school_id=school.id,
             user_id=admin.id,
-            username=f"{school.slug}_admin",
+            username=username,
             password=payload.admin_password,
         )
 
@@ -103,7 +110,7 @@ class AdminService:
         return {
             "school": school,
             "credentials": {
-                "username": f"{school.slug}_admin",
+                "username": username,
                 "password": payload.admin_password,
             },
         }

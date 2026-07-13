@@ -1,10 +1,9 @@
 from app.repositories.school_admin_dashboard_repository import (
-SchoolAdminDashboardRepository,
+    SchoolAdminDashboardRepository,
 )
 
+
 class SchoolAdminDashboardService:
-
-
     def __init__(self):
         self.repo = SchoolAdminDashboardRepository()
 
@@ -40,9 +39,9 @@ class SchoolAdminDashboardService:
             school_id,
         )
 
-        session = await self.repo.get_active_session(db)
+        session = await self.repo.get_active_session(db, school_id)
 
-        term = await self.repo.get_active_term(db)
+        term = await self.repo.get_active_term(db, school_id)
 
         attendance = await self.repo.attendance_summary(
             db,
@@ -85,17 +84,18 @@ class SchoolAdminDashboardService:
 
         return {
             "school_name": school.name if school else "School",
-
             "active_session": {
                 "id": str(session.id),
                 "name": session.name,
-            } if session else None,
-
+            }
+            if session
+            else None,
             "active_term": {
                 "id": str(term.id),
                 "name": term.name,
-            } if term else None,
-
+            }
+            if term
+            else None,
             "overview": {
                 "students": students,
                 "teachers": teachers,
@@ -103,31 +103,25 @@ class SchoolAdminDashboardService:
                 "classes": classes,
                 "subjects": subjects,
             },
-
             "attendance": attendance,
-
             "results": {
                 "total_batches": total_batches,
                 "approved_batches": approved_batches,
                 "pending_batches": pending_batches,
                 "published_batches": published_batches,
             },
-
             "recent_students": [
                 {
                     "id": str(student.id),
-                    "name":
-                    f"{student.first_name} {student.last_name}",
+                    "name": f"{student.first_name} {student.last_name}",
                     "email": student.email,
                 }
                 for student in recent_students
             ],
-
             "recent_teachers": [
                 {
                     "id": str(teacher.id),
-                    "name":
-                    f"{teacher.first_name} {teacher.last_name}",
+                    "name": f"{teacher.first_name} {teacher.last_name}",
                     "email": teacher.email,
                 }
                 for teacher in recent_teachers
@@ -135,6 +129,4 @@ class SchoolAdminDashboardService:
         }
 
 
-school_admin_dashboard_service = (
-SchoolAdminDashboardService()
-)
+school_admin_dashboard_service = SchoolAdminDashboardService()

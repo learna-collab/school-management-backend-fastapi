@@ -49,6 +49,10 @@ class Class(
         String(50),
         index=True,
     )
+    is_custom: Mapped[bool] = mapped_column(
+        default=False,
+        nullable=False,
+    )
 
     # optional ordering
 

@@ -80,13 +80,16 @@ class AuthService:
         # superadmin
         # schooladmin
         # -----------------------------------
-        if "_" not in username:
+        if "@" in username:
             user = await self.user_service.get_by_email(
                 db,
-                username,
+                username.strip().lower(),
             )
 
             if not user:
+                return None
+
+            if user.role != "SUPER_ADMIN":
                 return None
 
         # -----------------------------------
@@ -95,12 +98,9 @@ class AuthService:
         # lerna_john
         # -----------------------------------
         else:
-            school_slug, actual_username = username.split("_", 1)
-
-            user = await self.user_service.get_by_school_slug_and_username(
+            user = await self.user_service.get_by_username(
                 db,
-                school_slug,
-                actual_username,
+                username.strip().upper(),
             )
 
             if not user:
