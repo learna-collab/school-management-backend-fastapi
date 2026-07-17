@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import RequireSuperAdmin
 from app.db.database import get_db
-
 from app.services.user_service import UserService
 
 router = APIRouter(
@@ -14,6 +13,7 @@ router = APIRouter(
 )
 
 service = UserService()
+
 
 # =====================================
 # GET ALL USERS

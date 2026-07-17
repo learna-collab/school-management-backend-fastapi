@@ -68,6 +68,12 @@ class SchoolAssignmentService:
                     "first_name": student.first_name,
                     "last_name": student.last_name,
                     "email": student.email,
+                    "class_name": (
+                        student.enrollments[0].school_class.name
+                        if student.enrollments
+                        else None
+                    ),
+                    "is_active": student.is_active,
                     "username": (
                         student.credential.username if student.credential else None
                     ),
@@ -161,6 +167,12 @@ class SchoolAssignmentService:
                     "first_name": teacher.first_name,
                     "last_name": teacher.last_name,
                     "email": teacher.email,
+                    "class_name": (
+                        teacher.class_assignments[0].school_class.name
+                        if teacher.class_assignments
+                        else None
+                    ),
+                    "is_active": teacher.is_active,
                     "username": (
                         teacher.credential.username if teacher.credential else None
                     ),

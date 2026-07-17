@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.classes import Class
 from app.models.user import User
@@ -66,6 +66,57 @@ class RegistrationRepository:
         await db.refresh(obj)
 
         return obj
+
+    async def get_class_by_name(
+        self,
+        db,
+        school_id,
+        name: str,
+    ):
+        stmt = select(Class).where(
+            Class.school_id == school_id,
+            func.lower(Class.name) == name.lower(),
+        )
+
+        result = await db.execute(stmt)
+
+        return result.scalar_one_or_none()
+
+    async def get_class_names(
+        self,
+        db,
+        school_id,
+    ):
+        result = await db.execute(
+            select(
+                Class.name,
+            )
+            .where(
+                Class.school_id == school_id,
+            )
+            .order_by(
+                Class.sort_order,
+                Class.name,
+            )
+        )
+
+        return result.scalars().all()
+
+    async def get_school_classes(
+        self,
+        db,
+        school_id,
+    ):
+        result = await db.execute(
+            select(Class)
+            .where(Class.school_id == school_id)
+            .order_by(
+                Class.sort_order,
+                Class.name,
+            )
+        )
+
+        return result.scalars().all()
 
 
 registration_repo = RegistrationRepository()

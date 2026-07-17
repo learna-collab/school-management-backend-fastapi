@@ -95,17 +95,9 @@ class RegistrationService:
         role,
         email,
     ):
-        # Email must be unique
-        exists = await self.repo.email_exists(
-            db,
-            email,
-        )
-
-        if exists:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"{email} already exists.",
-            )
+        # ---------------------------------------
+        # Ensure email is unique
+        # ---------------------------------------
 
         school = await self.school_service.get_by_id(
             db,
@@ -129,16 +121,14 @@ class RegistrationService:
             profile_completed=True,
         )
 
-        credential = UserCredential(
-            school_id=school_id,
-            user_id=user.id,
-            username=username,
-            password=password,
-        )
-
         await self.repo.save(
             db,
-            credential,
+            UserCredential(
+                school_id=school_id,
+                user_id=user.id,
+                username=username,
+                password=password,
+            ),
         )
 
         return user, username, password
@@ -153,15 +143,16 @@ class RegistrationService:
         school_id,
         payload: StudentRegistrationCreate,
     ):
-        cls = await self.repo.get_class(
-            db,
-            payload.class_id,
+        cls = await self.repo.get_class_by_name(
+            db=db,
+            school_id=school_id,
+            name=payload.class_name,
         )
 
-        if not cls:
+        if cls is None:
             raise HTTPException(
                 status_code=404,
-                detail="Class not found.",
+                detail=f"Class '{payload.class_name}' not found.",
             )
 
         user, username, password = await self._create_user(
@@ -181,7 +172,7 @@ class RegistrationService:
                 "gender": payload.gender,
                 "date_of_birth": payload.date_of_birth,
                 "admission_date": payload.admission_date,
-                "class_id": payload.class_id,
+                "class_id": cls.id,
             },
         )
 
@@ -201,15 +192,16 @@ class RegistrationService:
         school_id,
         payload: TeacherRegistrationCreate,
     ):
-        cls = await self.repo.get_class(
-            db,
-            payload.class_id,
+        cls = await self.repo.get_class_by_name(
+            db=db,
+            school_id=school_id,
+            name=payload.class_name,
         )
 
-        if not cls:
+        if cls is None:
             raise HTTPException(
                 status_code=404,
-                detail="Class not found.",
+                detail=f"Class '{payload.class_name}' not found.",
             )
 
         user, username, password = await self._create_user(
@@ -229,7 +221,7 @@ class RegistrationService:
                 "qualification": payload.qualification,
                 "specialization": payload.specialization,
                 "hire_date": payload.hire_date,
-                "class_id": payload.class_id,
+                "class_id": cls.id,
             },
         )
 
@@ -285,24 +277,43 @@ class RegistrationService:
         school_id,
         payloads: list[StudentRegistrationCreate],
     ):
-        users = []
+        credentials = []
 
-        for payload in payloads:
-            result = await self.register_student(
-                db=db,
-                school_id=school_id,
-                payload=payload,
-            )
+        errors = []
 
-            users.append(
-                {
-                    "name": f"{payload.first_name} {payload.last_name}",
-                    "username": result["username"],
-                    "password": result["password"],
-                }
-            )
+        for index, payload in enumerate(payloads, start=2):
+            try:
+                result = await self.register_student(
+                    db=db,
+                    school_id=school_id,
+                    payload=payload,
+                )
 
-        return users
+                credentials.append(
+                    {
+                        "name": f"{payload.first_name} {payload.last_name}",
+                        "username": result["username"],
+                        "password": result["password"],
+                    }
+                )
+
+            except Exception as exc:
+                errors.append(
+                    {
+                        "row": index,
+                        "name": f"{payload.first_name} {payload.last_name}",
+                        "email": payload.email,
+                        "reason": str(exc),
+                    }
+                )
+
+        return {
+            "credentials": credentials,
+            "errors": errors,
+            "successful": len(credentials),
+            "failed": len(errors),
+            "total": len(payloads),
+        }
 
     # =====================================================
     # BATCH TEACHER REGISTRATION
@@ -314,24 +325,43 @@ class RegistrationService:
         school_id,
         payloads: list[TeacherRegistrationCreate],
     ):
-        users = []
+        credentials = []
 
-        for payload in payloads:
-            result = await self.register_teacher(
-                db=db,
-                school_id=school_id,
-                payload=payload,
-            )
+        errors = []
 
-            users.append(
-                {
-                    "name": f"{payload.first_name} {payload.last_name}",
-                    "username": result["username"],
-                    "password": result["password"],
-                }
-            )
+        for index, payload in enumerate(payloads, start=2):
+            try:
+                result = await self.register_teacher(
+                    db=db,
+                    school_id=school_id,
+                    payload=payload,
+                )
 
-        return users
+                credentials.append(
+                    {
+                        "name": f"{payload.first_name} {payload.last_name}",
+                        "username": result["username"],
+                        "password": result["password"],
+                    }
+                )
+
+            except Exception as exc:
+                errors.append(
+                    {
+                        "row": index,
+                        "name": f"{payload.first_name} {payload.last_name}",
+                        "email": payload.email,
+                        "reason": str(exc),
+                    }
+                )
+
+        return {
+            "credentials": credentials,
+            "errors": errors,
+            "successful": len(credentials),
+            "failed": len(errors),
+            "total": len(payloads),
+        }
 
     # =====================================================
     # BATCH PARENT REGISTRATION
@@ -361,6 +391,26 @@ class RegistrationService:
             )
 
         return users
+
+    async def get_school_classes(
+        self,
+        db,
+        school_id,
+    ):
+        return await self.repo.get_school_classes(
+            db=db,
+            school_id=school_id,
+        )
+
+    async def get_class_names(
+        self,
+        db,
+        school_id,
+    ):
+        return await self.repo.get_class_names(
+            db,
+            school_id,
+        )
 
 
 registration_service = RegistrationService()

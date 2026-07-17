@@ -223,21 +223,22 @@ async def import_students(
 
     payloads = [StudentRegistrationCreate(**row) for row in rows]
 
-    users = await registration_service.register_students_batch(
+    result = await registration_service.register_students_batch(
         db=db,
         school_id=school.id,
         payloads=payloads,
     )
 
-    excel = excel_export_service.credentials_sheet(
-        users,
+    excel = excel_export_service.import_report(
+        credentials=result["credentials"],
+        errors=result["errors"],
     )
 
     return StreamingResponse(
         excel,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
-            "Content-Disposition": "attachment; filename=student_credentials.xlsx"
+            "Content-Disposition": ("attachment; filename=student_import_report.xlsx")
         },
     )
 
@@ -264,21 +265,22 @@ async def import_teachers(
 
     payloads = [TeacherRegistrationCreate(**row) for row in rows]
 
-    users = await registration_service.register_teachers_batch(
+    result = await registration_service.register_students_batch(
         db=db,
         school_id=school.id,
         payloads=payloads,
     )
 
-    excel = excel_export_service.credentials_sheet(
-        users,
+    excel = excel_export_service.import_report(
+        credentials=result["credentials"],
+        errors=result["errors"],
     )
 
     return StreamingResponse(
         excel,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
-            "Content-Disposition": "attachment; filename=teacher_credentials.xlsx"
+            "Content-Disposition": ("attachment; filename=student_import_report.xlsx")
         },
     )
 
@@ -290,9 +292,17 @@ async def import_teachers(
 
 @router.get("/templates/student")
 async def download_student_template(
-    _: RequireSchoolAdmin,
+    db: DBSession,
+    admin: RequireSchoolAdmin,
 ):
-    excel = excel_template_service.student_template()
+    school = await get_school(db, admin)
+
+    classes = await registration_service.get_school_classes(
+        db=db,
+        school_id=school.id,
+    )
+
+    excel = excel_template_service.student_template(classes)
 
     return StreamingResponse(
         excel,
@@ -310,9 +320,17 @@ async def download_student_template(
 
 @router.get("/templates/teacher")
 async def download_teacher_template(
-    _: RequireSchoolAdmin,
+    db: DBSession,
+    admin: RequireSchoolAdmin,
 ):
-    excel = excel_template_service.teacher_template()
+    school = await get_school(db, admin)
+
+    classes = await registration_service.get_school_classes(
+        db=db,
+        school_id=school.id,
+    )
+
+    excel = excel_template_service.teacher_template(classes)
 
     return StreamingResponse(
         excel,

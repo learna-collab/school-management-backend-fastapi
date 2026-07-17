@@ -18,7 +18,7 @@ class StudentRegistrationCreate(BaseModel):
     date_of_birth: date
     admission_date: date
 
-    class_id: str
+    class_name: str
 
 
 # ===============================
@@ -37,7 +37,7 @@ class TeacherRegistrationCreate(BaseModel):
 
     hire_date: date
 
-    class_id: str
+    class_name: str | None
 
 
 # ===============================

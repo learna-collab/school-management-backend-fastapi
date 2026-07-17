@@ -1,3 +1,4 @@
+from app.models.user import User
 from app.repositories.dashboard_repository import (
     DashboardRepository,
 )
@@ -14,7 +15,7 @@ class DashboardService:
     async def student_dashboard(
         self,
         db,
-        user,
+        user: User,
     ):
         profile = await self.repo.get_student_profile(
             db,
@@ -47,8 +48,8 @@ class DashboardService:
             else 0
         )
 
-        session = await self.repo.get_active_session(db)
-        term = await self.repo.get_active_term(db)
+        session = await self.repo.get_active_session(db, school_id=user.school_id)
+        term = await self.repo.get_active_term(db, school_id=user.school_id)
 
         return {
             "student_name": f"{user.first_name} {user.last_name}",
@@ -108,8 +109,15 @@ class DashboardService:
             user.id,
         )
 
-        session = await self.repo.get_active_session(db)
-        term = await self.repo.get_active_term(db)
+        session = await self.repo.get_active_session(
+            db,
+            user.school_id,
+        )
+
+        term = await self.repo.get_active_term(
+            db,
+            user.school_id,
+        )
 
         return {
             "teacher_name": f"{user.first_name} {user.last_name}",

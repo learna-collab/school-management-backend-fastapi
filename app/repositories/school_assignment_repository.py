@@ -29,7 +29,13 @@ class SchoolAssignmentRepository:
                     User.role == UserRole.STUDENT,
                 )
             )
-            .options(selectinload(User.credential))
+            .options(
+                selectinload(User.credential),
+                selectinload(User.credential),
+                selectinload(User.enrollments).selectinload(
+                    StudentEnrollment.school_class
+                ),
+            )
         )
 
         return result.scalars().all()
@@ -47,7 +53,12 @@ class SchoolAssignmentRepository:
                     User.role == UserRole.TEACHER,
                 )
             )
-            .options(selectinload(User.credential))
+            .options(
+                selectinload(User.credential),
+                selectinload(User.class_assignments).selectinload(
+                    ClassTeacher.school_class
+                ),
+            )
         )
 
         return result.scalars().all()

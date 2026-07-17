@@ -18,7 +18,9 @@ from app.repositories.teacher_assignment_repository import (
 )
 from app.repositories.term_repository import term_repo
 from app.schemas.result_responses import (
+    ClassResultResponse,
     ResultBatchStatusResponse,
+    ResultSubmissionResponse,
     StudentResultApiResponse,
 )
 from app.schemas.result_schema import ResultStatusResponse
@@ -327,6 +329,7 @@ class ResultService:
             teacher.id,
             class_id,
         )
+        print(can_manage)
 
         if not can_manage:
             raise HTTPException(
@@ -914,6 +917,7 @@ class ResultService:
                 db,
                 school_id,
             )
+
             session_id = active_session.id
 
         if term_id is None:
@@ -921,6 +925,7 @@ class ResultService:
                 db,
                 school_id,
             )
+
             term_id = active_term.id
 
         batch = await self.repo.get_class_result_batch(
@@ -931,17 +936,20 @@ class ResultService:
             term_id=term_id,
         )
 
-        if not batch:
-            raise HTTPException(
-                status_code=404,
-                detail="No result found for this class.",
+        # No batch yet -> return empty response
+        if batch is None:
+            return ClassResultResponse(
+                batch_id=None,
+                class_id=class_id,
+                session_id=session_id,
+                term_id=term_id,
+                status="NOT_UPLOADED",
+                editable=True,
+                subjects=[],
+                students=[],
             )
 
-        result = ResultMapper.class_result(
-            batch,
-        )
-
-        return result
+        return ResultMapper.class_result(batch)
 
     async def get_student_result(
         self,
@@ -1097,6 +1105,102 @@ class ResultService:
         return ResultMapper.approval_history(
             history,
         )
+
+    async def update_results(
+        self,
+        db,
+        batch_id,
+        payload,
+        teacher,
+    ):
+        can_manage = await self.assignment_repo.teacher_has_class_access(
+            db,
+            teacher.id,
+            payload.class_id,
+        )
+
+        if not can_manage:
+            raise HTTPException(
+                status_code=403,
+                detail="You are not assigned to this class.",
+            )
+
+        batch = await self.repo.get_batch(
+            db=db,
+            batch_id=batch_id,
+            school_id=teacher.school_id,
+        )
+
+        if batch is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Result batch not found.",
+            )
+
+        if batch.status not in (
+            "DRAFT",
+            "REJECTED",
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="This batch can no longer be edited.",
+            )
+
+        committed = False
+
+        try:
+            updated_batch, _ = await self._save_batch(
+                db=db,
+                payload=payload,
+                teacher=teacher,
+                status="DRAFT",
+            )
+
+            await self.repo.commit(db)
+
+            committed = True
+
+            return ResultSubmissionResponse(
+                batch_id=updated_batch.id,
+                created=False,
+                status=updated_batch.status,
+                message="Result draft updated successfully.",
+            )
+
+        finally:
+            if not committed:
+                await self.repo.rollback(db)
+
+    async def view_batch(
+        self,
+        db,
+        batch_id,
+        teacher,
+    ):
+        batch = await self.repo.get_batch_details(
+            db=db,
+            batch_id=batch_id,
+        )
+
+        if batch is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Result batch not found.",
+            )
+
+        can_manage = await self.assignment_repo.teacher_has_class_access(
+            db,
+            teacher.id,
+            batch.class_id,
+        )
+
+        if not can_manage:
+            raise HTTPException(
+                status_code=403,
+                detail="You are not assigned to this class.",
+            )
+
+        return ResultMapper.class_result(batch)
 
 
 result_service = ResultService()

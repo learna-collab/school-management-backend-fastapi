@@ -441,18 +441,14 @@ async def attendance_dashboard(
 )
 async def get_class_attendance(
     class_id: UUID,
-    session_id: UUID,
-    term_id: UUID,
     attendance_date: date,
     db: DBSession,
     user: RequireSchoolAdmin,
 ):
     return await attendance_service.get_class_attendance(
+        teacher=user,
         db=db,
-        school_id=user.school_id,
         class_id=class_id,
-        session_id=session_id,
-        term_id=term_id,
         attendance_date=attendance_date,
     )
 

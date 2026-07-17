@@ -146,34 +146,16 @@ class TeacherAssignmentRepository:
         teacher_id,
         class_id,
     ):
-        class_teacher_exists = (
-            select(ClassTeacher.id)
-            .where(
+        print("teacher_id:", teacher_id)
+        print("class_id:", class_id)
+        result = await db.execute(
+            select(ClassTeacher.id).where(
                 ClassTeacher.teacher_id == teacher_id,
                 ClassTeacher.class_id == class_id,
             )
-            .exists()
         )
 
-        subject_teacher_exists = (
-            select(TeacherClassSubject.id)
-            .where(
-                TeacherClassSubject.teacher_id == teacher_id,
-                TeacherClassSubject.class_id == class_id,
-            )
-            .exists()
-        )
-
-        result = await db.execute(
-            select(
-                or_(
-                    class_teacher_exists,
-                    subject_teacher_exists,
-                )
-            )
-        )
-
-        return result.scalar()
+        return result.scalar_one_or_none() is not None
 
 
 teacher_assignment_repository = TeacherAssignmentRepository()

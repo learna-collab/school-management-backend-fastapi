@@ -1117,3 +1117,6 @@ class AcademicSetupService:
                 status_code=500,
                 detail=str(exc),
             )
+
+
+academic_setup_service = AcademicSetupService()

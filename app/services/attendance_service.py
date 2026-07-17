@@ -157,6 +157,7 @@ class AttendanceService:
             db,
             teacher.school_id,
         )
+
         sheet = await self.repo.get_class_attendance(
             db=db,
             school_id=teacher.school_id,
@@ -166,15 +167,21 @@ class AttendanceService:
             attendance_date=attendance_date,
         )
 
-        if not sheet:
-            raise HTTPException(
-                status_code=404,
-                detail="Attendance not found.",
-            )
+        if sheet:
+            return AttendanceMapper.class_sheet(sheet)
 
-        return AttendanceMapper.class_sheet(
-            sheet,
-        )
+        return {
+            "sheet_id": None,
+            "class_id": class_id,
+            "session_id": active_session.id,
+            "term_id": active_term.id,
+            "attendance_date": attendance_date,
+            "total_students": 0,
+            "present_count": 0,
+            "absent_count": 0,
+            "late_count": 0,
+            "records": [],
+        }
 
     async def get_student_attendance(
         self,

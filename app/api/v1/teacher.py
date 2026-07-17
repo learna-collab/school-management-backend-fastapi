@@ -13,11 +13,11 @@ from app.schemas.attendance import (
 )
 from app.schemas.result_responses import (
     ClassResultResponse,
+    ResultSubmissionResponse,
 )
 from app.schemas.result_schema import (
     ResultBatchCreate,
     ResultStatusResponse,
-    ResultSubmissionResponse,
     UpdateResultRecord,
     UpdateTeacherComment,
 )

@@ -25,15 +25,31 @@ class DashboardRepository:
     # ACTIVE SESSION
     # ==================================================
 
-    async def get_active_session(self, db):
+    async def get_active_session(
+        self,
+        db,
+        school_id,
+    ):
         result = await db.execute(
-            select(AcademicSession).where(AcademicSession.is_active.is_(True))
+            select(AcademicSession).where(
+                AcademicSession.school_id == school_id,
+                AcademicSession.is_active.is_(True),
+            )
         )
 
         return result.scalar_one_or_none()
 
-    async def get_active_term(self, db):
-        result = await db.execute(select(Term).where(Term.is_active.is_(True)))
+    async def get_active_term(
+        self,
+        db,
+        school_id,
+    ):
+        result = await db.execute(
+            select(Term).where(
+                Term.school_id == school_id,
+                Term.is_active.is_(True),
+            )
+        )
 
         return result.scalar_one_or_none()
 

@@ -517,6 +517,17 @@ class ResultRepository:
 
         return record
 
+    async def update_batch(
+        self,
+        db: AsyncSession,
+        batch: ResultBatch,
+    ) -> ResultBatch:
+        """Persist changes made to an existing result batch."""
+        db.add(batch)
+        await db.flush()
+
+        return batch
+
     async def delete_batch_approvals(
         self,
         db: AsyncSession,

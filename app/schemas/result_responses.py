@@ -98,7 +98,8 @@ class ClassStudentResponse(BaseModel):
 
 
 class ClassResultResponse(BaseModel):
-    batch_id: UUID
+    batch_id: UUID | None = None
+
     class_id: UUID
     session_id: UUID
     term_id: UUID
@@ -205,4 +206,4 @@ class StudentResultData(BaseModel):
 class StudentResultApiResponse(BaseModel):
     published: bool
     message: str
-    data: StudentResultData | None = None
+    data: StudentResultResponse | None = None

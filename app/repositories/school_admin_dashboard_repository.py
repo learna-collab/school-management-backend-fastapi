@@ -1,7 +1,10 @@
+from datetime import date
+
 from sqlalchemy import func, select
 
 from app.models.academic_session import AcademicSession
 from app.models.attendance_record import AttendanceRecord
+from app.models.attendance_sheet import AttendanceSheet
 from app.models.classes import Class
 from app.models.result_batch import ResultBatch
 from app.models.school import School
@@ -122,8 +125,13 @@ class SchoolAdminDashboardRepository:
                 AttendanceRecord.status,
                 func.count(AttendanceRecord.id),
             )
+            .join(
+                AttendanceSheet,
+                AttendanceRecord.sheet_id == AttendanceSheet.id,
+            )
             .where(
                 AttendanceRecord.school_id == school_id,
+                AttendanceSheet.attendance_date == date.today(),
             )
             .group_by(AttendanceRecord.status)
         )
