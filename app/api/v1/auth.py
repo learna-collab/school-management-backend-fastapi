@@ -5,7 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser
 from app.db.database import get_db
-from app.schemas.auth import ForgotPasswordRequest, LoginRequest, RegisterRequest, RegisterResponse, ResetPasswordRequest
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    RegisterResponse,
+    ResetPasswordRequest,
+)
 from app.schemas.user import UserOut
 from app.services.auth_service import AuthService
 
@@ -105,29 +111,24 @@ async def login(
         "user": result["user"],
     }
 
+
 @router.post("/refresh")
 async def refresh(
     db: Annotated[
         AsyncSession,
         Depends(get_db),
     ],
-    refresh_token: str | None = Cookie(
-        default=None
-    ),
-    
+    refresh_token: str | None = Cookie(default=None),
 ):
-
     if not refresh_token:
         raise HTTPException(
             status_code=401,
             detail="Missing refresh token",
         )
 
-    access_token = (
-        await auth_service.refresh_access_token(
-            db,
-            refresh_token,
-        )
+    access_token = await auth_service.refresh_access_token(
+        db,
+        refresh_token,
     )
 
     if not access_token:
@@ -136,15 +137,13 @@ async def refresh(
             detail="Invalid refresh token",
         )
 
-    return {
-        "access_token": access_token
-    }
+    return {"access_token": access_token}
+
 
 @router.post("/logout")
 async def logout(
     response: Response,
 ):
-
     response.delete_cookie(
         key="refresh_token",
         secure=True,
@@ -152,21 +151,17 @@ async def logout(
         samesite="none",
     )
 
-    return {
-        "message": "Logged out"
-    }
+    return {"message": "Logged out"}
+
 
 @router.post("/forgot-password")
 async def forgot_password(
     payload: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
-
     await auth_service.forgot_password(db, payload.email)
 
-    return {
-        "message": "If account exists, reset link sent"
-    }
+    return {"message": "If account exists, reset link sent"}
 
 
 @router.post("/reset-password")
@@ -174,7 +169,6 @@ async def reset_password(
     payload: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
-
     success = await auth_service.reset_password(
         db,
         payload.token,
@@ -187,9 +181,8 @@ async def reset_password(
             detail="Invalid or expired token",
         )
 
-    return {
-        "message": "Password updated successfully"
-    }
+    return {"message": "Password updated successfully"}
+
 
 @router.get("/me", response_model=UserOut)
 async def get_current_user(current_user: CurrentUser):

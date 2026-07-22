@@ -1,7 +1,7 @@
 from datetime import date
 
 from sqlalchemy import Boolean, Date, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import (
     Base,
@@ -37,4 +37,9 @@ class AcademicSession(
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
+    )
+    cbt_exams = relationship(
+        "CBTExam",
+        back_populates="session",
+        cascade="all, delete-orphan",
     )

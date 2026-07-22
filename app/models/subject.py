@@ -29,6 +29,11 @@ class Subject(
         default=False,
         nullable=False,
     )
+    cbt_exams = relationship(
+        "CBTExam",
+        back_populates="subject",
+        cascade="all, delete-orphan",
+    )
 
     teacher_assignments = relationship(
         "TeacherClassSubject",

@@ -85,3 +85,8 @@ class Class(
         back_populates="school_class",
         cascade="all, delete-orphan",
     )
+    cbt_exams = relationship(
+        "CBTExam",
+        back_populates="school_class",
+        cascade="all, delete-orphan",
+    )

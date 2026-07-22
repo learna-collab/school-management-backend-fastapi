@@ -2,7 +2,7 @@ from datetime import date
 from uuid import UUID
 
 from sqlalchemy import Boolean, Date, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import (
     Base,
@@ -43,4 +43,10 @@ class Term(
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
+    )
+
+    cbt_exams = relationship(
+        "CBTExam",
+        back_populates="term",
+        cascade="all, delete-orphan",
     )

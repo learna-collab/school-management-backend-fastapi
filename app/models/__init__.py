@@ -3,6 +3,11 @@ from .academic_template import AcademicTemplate
 from .attendance_record import AttendanceRecord
 from .attendance_sheet import AttendanceSheet
 from .blog_post import BlogPost
+from .cbt_answer import CBTAnswer
+from .cbt_attempt import CBTAttempt
+from .cbt_exam import CBTExam
+from .cbt_question import CBTQuestion
+from .cbt_question_option import CBTQuestionOption
 from .class_subject import ClassSubject
 from .class_teacher import ClassTeacher
 from .class_template import ClassTemplate
@@ -35,6 +40,11 @@ __all__ = [
     "AttendanceRecord",
     "AttendanceSheet",
     "BlogPost",
+    "CBTAnswer",
+    "CBTAttempt",
+    "CBTExam",
+    "CBTQuestion",
+    "CBTQuestionOption",
     "Class",
     "ClassSubject",
     "ClassTeacher",
