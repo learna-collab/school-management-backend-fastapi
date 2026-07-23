@@ -122,7 +122,7 @@ class SchoolClassResponse(BaseModel):
 
     level: AcademicLevel | str = ""
 
-    sort_order: int
+    sort_order: int | None = None
 
     is_custom: bool = False
 
