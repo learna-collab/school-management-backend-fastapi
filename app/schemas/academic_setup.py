@@ -120,7 +120,7 @@ class SchoolClassResponse(BaseModel):
 
     name: str
 
-    level: AcademicLevel
+    level: AcademicLevel | None = None
 
     sort_order: int
 
