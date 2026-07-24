@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cbt_answer import CBTAnswer
@@ -22,10 +23,15 @@ from app.schemas.cbt import (
     AttemptResponse,
     CBTApiResponse,
     CBTExamCreate,
+    CBTResultsDashboardApiResponse,
+    CBTResultsDashboardItem,
+    CBTResultsDashboardResponse,
+    CBTResultsDashboardStats,
     ExamApiResponse,
     ExamListApiResponse,
     ExamListResponse,
     ExamResponse,
+    ExamSummaryResponse,
     QuestionApiResponse,
     QuestionCreate,
     QuestionResponse,
@@ -57,14 +63,15 @@ class CBTService:
             instructions=payload.instructions,
             duration_minutes=payload.duration_minutes,
             total_marks=payload.total_marks,
-            starts_at=payload.start_time,
-            ends_at=payload.end_time,
+            starts_at=payload.starts_at,
+            ends_at=payload.ends_at,
         )
 
         exam = await self.repo.create_exam(
             db,
             exam,
         )
+        exam = await self.repo.get_exam(db, exam.id)
 
         return ExamApiResponse(
             success=True,
@@ -537,17 +544,71 @@ class CBTService:
             exam_id,
         )
 
+        if not attempts:
+            exam = await self.repo.get_exam(
+                db,
+                exam_id,
+            )
+
+            if not exam:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Exam not found.",
+                )
+
+            return AttemptListApiResponse(
+                success=True,
+                message="Exam results retrieved successfully.",
+                data=AttemptListResponse(
+                    exam=ExamSummaryResponse(
+                        id=exam.id,
+                        title=exam.title,
+                        duration_minutes=exam.duration_minutes,
+                        total_marks=exam.total_marks,
+                        starts_at=exam.starts_at,
+                        ends_at=exam.ends_at,
+                        is_published=exam.is_published,
+                        question_count=len(exam.questions),
+                        class_name=exam.school_class.name,
+                        subject_name=exam.subject.name,
+                    ),
+                    attempts=[],
+                    count=0,
+                    average_score=0,
+                    highest_score=0,
+                    lowest_score=0,
+                    passed_count=0,
+                    failed_count=0,
+                ),
+            )
+
+        exam = attempts[0].exam
+
+        scores = [a.score for a in attempts]
+
         return AttemptListApiResponse(
             success=True,
             message="Exam results retrieved successfully.",
             data=AttemptListResponse(
-                attempts=[
-                    AttemptResponse.model_validate(
-                        attempt,
-                    )
-                    for attempt in attempts
-                ],
+                exam=ExamSummaryResponse(
+                    id=exam.id,
+                    title=exam.title,
+                    duration_minutes=exam.duration_minutes,
+                    total_marks=exam.total_marks,
+                    starts_at=exam.starts_at,
+                    ends_at=exam.ends_at,
+                    is_published=exam.is_published,
+                    question_count=len(exam.questions),
+                    class_name=exam.school_class.name,
+                    subject_name=exam.subject.name,
+                ),
+                attempts=[AttemptResponse.model_validate(a) for a in attempts],
                 count=len(attempts),
+                average_score=round(sum(scores) / len(scores), 2),
+                highest_score=max(scores),
+                lowest_score=min(scores),
+                passed_count=sum(1 for a in attempts if a.passed),
+                failed_count=sum(1 for a in attempts if not a.passed),
             ),
         )
 
@@ -675,5 +736,77 @@ class CBTService:
                     for attempt in attempts
                 ],
                 count=len(attempts),
+            ),
+        )
+
+    async def get_results_dashboard(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+    ) -> CBTResultsDashboardApiResponse:
+        """
+        Returns the CBT results dashboard for a school.
+
+        One row represents one examination.
+        """
+        dashboard_rows = await self.repo.get_results_dashboard(
+            db=db,
+            school_id=school_id,
+        )
+
+        dashboard_stats = await self.repo.get_results_dashboard_stats(
+            db=db,
+            school_id=school_id,
+        )
+
+        results = [
+            CBTResultsDashboardItem(
+                exam_id=row["exam_id"],
+                title=row["title"],
+                class_name=row["class_name"],
+                subject_name=row["subject_name"],
+                attempts=row["attempts"],
+                average_score=round(
+                    float(row["average_score"]),
+                    2,
+                ),
+                average_percentage=round(
+                    float(row["average_percentage"]),
+                    2,
+                ),
+                highest_score=int(row["highest_score"]),
+                lowest_score=int(row["lowest_score"]),
+                pass_rate=round(
+                    float(row["pass_rate"]),
+                    2,
+                ),
+                total_marks=row["total_marks"],
+                published=row["is_published"],
+                starts_at=row["starts_at"],
+                ends_at=row["ends_at"],
+            )
+            for row in dashboard_rows
+        ]
+
+        stats = CBTResultsDashboardStats(
+            total_exams=dashboard_stats["total_exams"],
+            total_attempts=dashboard_stats["total_attempts"],
+            average_percentage=round(
+                float(dashboard_stats["average_percentage"]),
+                2,
+            ),
+            overall_pass_rate=round(
+                float(dashboard_stats["overall_pass_rate"]),
+                2,
+            ),
+        )
+
+        return CBTResultsDashboardApiResponse(
+            success=True,
+            message="CBT results dashboard retrieved successfully.",
+            data=CBTResultsDashboardResponse(
+                results=results,
+                count=len(results),
+                stats=stats,
             ),
         )

@@ -175,6 +175,23 @@ async def delete_exam(
         )
 
 
+@router.get("/admin/results")
+async def get_results_dashboard(
+    db: DBSession,
+    current_user: RequireSchoolAdmin,
+):
+    try:
+        return await service.get_results_dashboard(
+            db=db,
+            school_id=current_user.school_id,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
+
+
 @router.get("/admin/exams/{exam_id}/results")
 async def get_exam_results(
     exam_id: UUID,

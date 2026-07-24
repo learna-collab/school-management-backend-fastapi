@@ -1,8 +1,10 @@
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.attendance_sheet import AttendanceSheet
 from app.models.class_subject import ClassSubject
 from app.models.class_teacher import ClassTeacher
 from app.models.classes import Class
@@ -12,17 +14,16 @@ from app.models.teacher_class_subject import TeacherClassSubject
 
 
 class SchoolClassRepository:
-
     # ==========================================================
     # CLASS DASHBOARD
     # ==========================================================
 
     async def get_class_dashboard(
-    self,
-    db: AsyncSession,
-    class_id: UUID,
-    session_id: UUID,
-):
+        self,
+        db: AsyncSession,
+        class_id: UUID,
+        session_id: UUID,
+    ):
         cls = await db.get(
             Class,
             class_id,
@@ -89,28 +90,19 @@ class SchoolClassRepository:
     # GET BY SCHOOL
     # ==========================================================
 
-    
-
     async def get_by_school(
-    self,
-    db: AsyncSession,
-    school_id: UUID,
-):
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+    ):
         result = await db.execute(
             select(
                 Class,
-
-                func.count(
-                    distinct(StudentEnrollment.student_id)
-                ).label("students_count"),
-
-                func.count(
-                    distinct(ClassTeacher.teacher_id)
-                ).label("teachers_count"),
-
-                func.count(
-                    distinct(ClassSubject.subject_id)
-                ).label("subjects_count"),
+                func.count(distinct(StudentEnrollment.student_id)).label(
+                    "students_count"
+                ),
+                func.count(distinct(ClassTeacher.teacher_id)).label("teachers_count"),
+                func.count(distinct(ClassSubject.subject_id)).label("subjects_count"),
             )
             .outerjoin(
                 StudentEnrollment,
@@ -172,6 +164,14 @@ class SchoolClassRepository:
             Class,
             class_id,
         )
+        attendance_exists = await db.scalar(
+            select(AttendanceSheet.id).where(AttendanceSheet.class_id == class_id)
+        )
+        if attendance_exists:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this class because attendance records already exist.",
+            )
 
         if not cls:
             return False
@@ -181,11 +181,12 @@ class SchoolClassRepository:
         await db.commit()
 
         return True
+
     async def get_class_basic_info(
-    self,
-    db: AsyncSession,
-    class_id: UUID,
-):
+        self,
+        db: AsyncSession,
+        class_id: UUID,
+    ):
         cls = await db.get(
             Class,
             class_id,

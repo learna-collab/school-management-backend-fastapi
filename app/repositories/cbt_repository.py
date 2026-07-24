@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import Float, case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -9,6 +9,8 @@ from app.models.cbt_attempt import CBTAttempt
 from app.models.cbt_exam import CBTExam
 from app.models.cbt_question import CBTQuestion
 from app.models.cbt_question_option import CBTQuestionOption
+from app.models.classes import Class
+from app.models.subject import Subject
 
 
 class CBTRepository:
@@ -306,6 +308,9 @@ class CBTRepository:
             .options(
                 selectinload(CBTAttempt.student),
                 selectinload(CBTAttempt.answers),
+                selectinload(CBTAttempt.exam).selectinload(CBTExam.school_class),
+                selectinload(CBTAttempt.exam).selectinload(CBTExam.subject),
+                selectinload(CBTAttempt.exam).selectinload(CBTExam.questions),
             )
         )
 
@@ -351,3 +356,146 @@ class CBTRepository:
         )
 
         return result.scalar_one_or_none()
+
+    async def get_results_dashboard(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+    ):
+        """Returns one row per examination with aggregated statistics."""
+        pass_count = func.sum(
+            case(
+                (CBTAttempt.is_passed.is_(True), 1),
+                else_=0,
+            )
+        )
+
+        result = await db.execute(
+            select(
+                CBTExam.id.label("exam_id"),
+                CBTExam.title,
+                CBTExam.total_marks,
+                CBTExam.starts_at,
+                CBTExam.ends_at,
+                CBTExam.is_published,
+                Class.name.label("class_name"),
+                Subject.name.label("subject_name"),
+                func.count(CBTAttempt.id).label(
+                    "attempts",
+                ),
+                func.coalesce(
+                    func.avg(CBTAttempt.score),
+                    0,
+                ).label("average_score"),
+                func.coalesce(
+                    func.avg(
+                        CBTAttempt.percentage,
+                    ),
+                    0,
+                ).label("average_percentage"),
+                func.coalesce(
+                    func.max(CBTAttempt.score),
+                    0,
+                ).label("highest_score"),
+                func.coalesce(
+                    func.min(CBTAttempt.score),
+                    0,
+                ).label("lowest_score"),
+                func.coalesce(
+                    (
+                        pass_count.cast(Float)
+                        * 100
+                        / func.nullif(
+                            func.count(
+                                CBTAttempt.id,
+                            ),
+                            0,
+                        )
+                    ),
+                    0,
+                ).label("pass_rate"),
+            )
+            .join(
+                Class,
+                CBTExam.class_id == Class.id,
+            )
+            .join(
+                Subject,
+                CBTExam.subject_id == Subject.id,
+            )
+            .outerjoin(
+                CBTAttempt,
+                CBTAttempt.exam_id == CBTExam.id,
+            )
+            .where(
+                CBTExam.school_id == school_id,
+            )
+            .group_by(
+                CBTExam.id,
+                CBTExam.title,
+                CBTExam.total_marks,
+                CBTExam.starts_at,
+                CBTExam.ends_at,
+                CBTExam.is_published,
+                Class.name,
+                Subject.name,
+            )
+            .order_by(
+                CBTExam.starts_at.desc(),
+            )
+        )
+
+        return result.mappings().all()
+
+    async def get_results_dashboard_stats(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+    ):
+        result = await db.execute(
+            select(
+                func.count(
+                    func.distinct(CBTExam.id),
+                ).label("total_exams"),
+                func.count(
+                    CBTAttempt.id,
+                ).label("total_attempts"),
+                func.coalesce(
+                    func.avg(
+                        CBTAttempt.percentage,
+                    ),
+                    0,
+                ).label("average_percentage"),
+                func.coalesce(
+                    (
+                        func.sum(
+                            case(
+                                (
+                                    CBTAttempt.is_passed.is_(True),
+                                    1,
+                                ),
+                                else_=0,
+                            )
+                        ).cast(Float)
+                        * 100
+                        / func.nullif(
+                            func.count(
+                                CBTAttempt.id,
+                            ),
+                            0,
+                        )
+                    ),
+                    0,
+                ).label("overall_pass_rate"),
+            )
+            .select_from(CBTExam)
+            .outerjoin(
+                CBTAttempt,
+                CBTAttempt.exam_id == CBTExam.id,
+            )
+            .where(
+                CBTExam.school_id == school_id,
+            )
+        )
+
+        return result.mappings().one()

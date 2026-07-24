@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 # ===========================================================
 # REQUEST SCHEMAS
@@ -48,6 +48,64 @@ class SubmitExamRequest(BaseModel):
 # ===========================================================
 # RESPONSE SCHEMAS
 # ===========================================================
+
+
+class CBTResultsDashboardStats(BaseModel):
+    total_exams: int
+    total_attempts: int
+
+    average_percentage: float
+    overall_pass_rate: float
+
+
+class CBTResultsDashboardItem(BaseModel):
+    exam_id: UUID
+
+    title: str
+
+    class_name: str
+    subject_name: str
+
+    attempts: int
+
+    average_score: float
+    average_percentage: float
+
+    highest_score: int
+    lowest_score: int
+
+    pass_rate: float
+
+    total_marks: int
+
+    published: bool
+
+    starts_at: datetime
+    ends_at: datetime
+
+
+class CBTResultsDashboardResponse(BaseModel):
+    results: list[CBTResultsDashboardItem]
+
+    count: int
+
+    stats: CBTResultsDashboardStats
+
+
+class StudentSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    first_name: str
+    last_name: str
+    email: str | None = None
+
+    admission_number: str | None = None
+
+    @computed_field
+    @property
+    def full_name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
 
 
 class QuestionOptionResponse(BaseModel):
@@ -126,7 +184,10 @@ class AttemptResponse(BaseModel):
     id: UUID
 
     exam_id: UUID
+
     student_id: UUID
+
+    student: StudentSummaryResponse
 
     started_at: datetime
     completed_at: datetime | None
@@ -134,6 +195,30 @@ class AttemptResponse(BaseModel):
     score: int
     percentage: float
     passed: bool
+
+
+class ExamSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+
+    title: str
+
+    duration_minutes: int
+
+    total_marks: int
+
+    starts_at: datetime
+
+    ends_at: datetime
+
+    is_published: bool
+
+    question_count: int
+
+    class_name: str
+
+    subject_name: str
 
 
 class AnswerResponse(BaseModel):
@@ -164,6 +249,10 @@ class ExamApiResponse(CBTApiResponse):
     data: ExamResponse | None = None
 
 
+class CBTResultsDashboardApiResponse(CBTApiResponse):
+    data: CBTResultsDashboardResponse | None = None
+
+
 class QuestionApiResponse(CBTApiResponse):
     data: QuestionResponse | None = None
 
@@ -192,8 +281,21 @@ class QuestionListResponse(BaseModel):
 
 
 class AttemptListResponse(BaseModel):
+    exam: ExamSummaryResponse
+
     attempts: list[AttemptResponse]
+
     count: int
+
+    average_score: float
+
+    highest_score: int
+
+    lowest_score: int
+
+    passed_count: int
+
+    failed_count: int
 
 
 class ExamListApiResponse(CBTApiResponse):
