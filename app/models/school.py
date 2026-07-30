@@ -80,3 +80,8 @@ class School(Base, UUIDMixin, TimestampMixin):
         back_populates="school",
         cascade="all, delete-orphan",
     )
+    academic_periods = relationship(
+        "SchoolAcademicPeriod",
+        back_populates="school",
+        cascade="all, delete-orphan",
+    )

@@ -55,6 +55,15 @@ class AttendanceSheet(
         back_populates="sheet",
         cascade="all, delete-orphan",
     )
+    session = relationship(
+        "AcademicSession",
+        back_populates="attendance_sheets",
+    )
+
+    term = relationship(
+        "Term",
+        back_populates="attendance_sheets",
+    )
 
     __table_args__ = (
         UniqueConstraint(

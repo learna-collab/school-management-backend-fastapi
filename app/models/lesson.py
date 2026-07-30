@@ -1,44 +1,29 @@
-from sqlalchemy import (
-    UUID,
-    Column,
-    ForeignKey,
-    String,
-    Text,
-    Boolean,
-)
-
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-from app.db.base import (
-    Base,
-    UUIDMixin,
-    TimestampMixin,
-)
+from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
-class Lesson(
-    Base,
-    UUIDMixin,
-    TimestampMixin,
-):
+class Lesson(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "lessons"
 
-    # LERNA ADMIN
     created_by = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),
         nullable=False,
     )
 
-    class_id = Column(
+    # GENERIC TEMPLATE LINKS
+    class_template_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("classes.id"),
+        ForeignKey("class_templates.id"),
         nullable=False,
     )
 
-    subject_id = Column(
+    subject_template_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("subjects.id"),
+        ForeignKey("subject_templates.id"),
         nullable=False,
     )
 
@@ -54,24 +39,29 @@ class Lesson(
         nullable=False,
     )
 
-    title = Column(String, nullable=False)
+    week_number = Column(Integer, nullable=False)
+    lesson_day = Column(String(20), nullable=False)
 
-    topic = Column(String, nullable=False)
+    title = Column(String(255), nullable=False)
+    topic = Column(String(255), nullable=False)
 
-    objectives = Column(Text)
+    objectives = Column(Text, nullable=False)
+    teacher_notes = Column(Text, nullable=True)
 
-    file_url = Column(Text)
+    file_url = Column(Text, nullable=True)
 
-    is_published = Column(
-        Boolean,
-        default=True,
+    is_published = Column(Boolean, default=True)
+
+    # relationships
+    class_template = relationship("ClassTemplate")
+    subject_template = relationship("SubjectTemplate")
+
+    alf = relationship(
+        "LessonALF",
+        back_populates="lesson",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
+    session = relationship("AcademicSession", back_populates="lessons")
 
-    class_obj = relationship("Class")
-    subject = relationship("Subject")
-    session = relationship("AcademicSession")
-    term = relationship("Term")
-
-    created_by_user = relationship("User")
-
-    
+    term = relationship("Term", back_populates="lessons")

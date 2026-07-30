@@ -8,6 +8,7 @@ from app.schemas.cbt import (
     CBTExamCreate,
     QuestionCreate,
     SubmitAnswerRequest,
+    UpdateQuestionPositionRequest,
 )
 from app.services.cbt_service import CBTService
 
@@ -180,16 +181,10 @@ async def get_results_dashboard(
     db: DBSession,
     current_user: RequireSchoolAdmin,
 ):
-    try:
-        return await service.get_results_dashboard(
-            db=db,
-            school_id=current_user.school_id,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.get_results_dashboard(
+        db=db,
+        school_id=current_user.school_id,
+    )
 
 
 @router.get("/admin/exams/{exam_id}/results")
@@ -198,16 +193,10 @@ async def get_exam_results(
     db: DBSession,
     _: RequireSchoolAdmin,
 ):
-    try:
-        return await service.get_exam_results(
-            db=db,
-            exam_id=exam_id,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.get_exam_results(
+        db=db,
+        exam_id=exam_id,
+    )
 
 
 @router.get("/admin/attempts/{attempt_id}")
@@ -231,19 +220,30 @@ async def get_attempt(
 # ==========================================================
 # STUDENT ENDPOINTS
 # ==========================================================
+@router.patch(
+    "/student/attempts/{attempt_id}/position",
+)
+async def update_current_question(
+    attempt_id: UUID,
+    payload: UpdateQuestionPositionRequest,
+    db: DBSession,
+    student: RequireStudent,
+):
+    return await service.update_current_question(
+        db=db,
+        attempt_id=attempt_id,
+        student_id=student.id,
+        current_question_index=payload.current_question_index,
+    )
 
 
 @router.get("/student/exams")
 async def available_exams(
-    class_id: UUID,
     db: DBSession,
-    _: RequireStudent,
+    user: RequireStudent,
 ):
     try:
-        return await service.get_available_exams(
-            db=db,
-            class_id=class_id,
-        )
+        return await service.get_available_exams(db=db, user=user)
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -257,53 +257,37 @@ async def start_exam(
     db: DBSession,
     current_user: RequireStudent,
 ):
-    try:
-        return await service.start_exam(
-            db=db,
-            exam_id=exam_id,
-            student_id=current_user.id,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.start_exam(
+        db=db,
+        exam_id=exam_id,
+        student_id=current_user.id,
+    )
 
 
 @router.post("/student/answers")
 async def submit_answer(
     payload: SubmitAnswerRequest,
     db: DBSession,
-    _: RequireStudent,
+    current_user: RequireStudent,
 ):
-    try:
-        return await service.submit_answer(
-            db=db,
-            payload=payload,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.submit_answer(
+        db=db,
+        payload=payload,
+        student_id=current_user.id,
+    )
 
 
 @router.post("/student/attempts/{attempt_id}/submit")
 async def submit_exam(
     attempt_id: UUID,
     db: DBSession,
-    _: RequireStudent,
+    current_user: RequireStudent,
 ):
-    try:
-        return await service.submit_exam(
-            db=db,
-            attempt_id=attempt_id,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.submit_exam(
+        db=db,
+        attempt_id=attempt_id,
+        student_id=current_user.id,
+    )
 
 
 @router.get("/student/attempts/{attempt_id}")
@@ -312,17 +296,11 @@ async def resume_exam(
     db: DBSession,
     current_user: RequireStudent,
 ):
-    try:
-        return await service.resume_exam(
-            db=db,
-            attempt_id=attempt_id,
-            student_id=current_user.id,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.resume_exam(
+        db=db,
+        exam_id=attempt_id,
+        student_id=current_user.id,
+    )
 
 
 @router.get("/student/results/{attempt_id}")
@@ -331,17 +309,11 @@ async def student_result(
     db: DBSession,
     current_user: RequireStudent,
 ):
-    try:
-        return await service.get_student_result(
-            db=db,
-            attempt_id=attempt_id,
-            student_id=current_user.id,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.get_student_result(
+        db=db,
+        attempt_id=attempt_id,
+        student_id=current_user.id,
+    )
 
 
 @router.get("/student/history")
@@ -349,13 +321,7 @@ async def student_history(
     db: DBSession,
     current_user: RequireStudent,
 ):
-    try:
-        return await service.get_student_history(
-            db=db,
-            student_id=current_user.id,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.get_student_history(
+        db=db,
+        student_id=current_user.id,
+    )

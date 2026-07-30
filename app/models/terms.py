@@ -1,52 +1,47 @@
-from datetime import date
-from uuid import UUID
-
-from sqlalchemy import Boolean, Date, ForeignKey, String
+from sqlalchemy import Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import (
-    Base,
-    TenantMixin,
-    TimestampMixin,
-    UUIDMixin,
-)
+from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
 class Term(
     Base,
     UUIDMixin,
     TimestampMixin,
-    TenantMixin,
 ):
     __tablename__ = "terms"
 
-    session_id: Mapped[UUID] = mapped_column(
-        ForeignKey("academic_sessions.id"),
-        nullable=False,
-    )
-
+    # Example: First Term, Second Term, Third Term
     name: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
+        unique=True,
+        index=True,
     )
 
-    start_date: Mapped[date] = mapped_column(
-        Date,
-        nullable=False,
-    )
-
-    end_date: Mapped[date] = mapped_column(
-        Date,
+    # Controls display order
+    sort_order: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
         nullable=False,
     )
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
-        default=False,
+        default=True,
+        nullable=False,
+    )
+
+    # Relationships
+    lessons = relationship("Lesson", back_populates="term")
+    result_batches = relationship("ResultBatch", back_populates="term")
+    attendance_sheets = relationship(
+        "AttendanceSheet",
+        back_populates="term",
+        cascade="all, delete-orphan",
     )
 
     cbt_exams = relationship(
         "CBTExam",
         back_populates="term",
-        cascade="all, delete-orphan",
     )

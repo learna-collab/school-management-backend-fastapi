@@ -1,13 +1,8 @@
 from uuid import UUID
 
-from app.repositories.academic_session_repository import (
-    academic_session_repo,
-)
+from app.repositories.dashboard_repository import DashboardRepository
 from app.repositories.school_assignment_repository import (
     school_assignment_repo,
-)
-from app.repositories.term_repository import (
-    term_repo,
 )
 
 
@@ -15,8 +10,7 @@ class SchoolAssignmentService:
     def __init__(self):
         self.repo = school_assignment_repo
 
-        self.session_repo = academic_session_repo
-        self.term_repo = term_repo
+        self.period_repo = DashboardRepository()
 
         # ==========================================================
 
@@ -31,12 +25,12 @@ class SchoolAssignmentService:
         db,
         school_id: UUID,
     ):
-        session = await self.session_repo.get_active(
+        session = await self.period_repo.get_active_session(
             db,
             school_id,
         )
 
-        term = await self.term_repo.get_active(
+        term = await self.period_repo.get_active_term(
             db,
             school_id,
         )

@@ -1,6 +1,7 @@
 from datetime import date
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.models.academic_session import AcademicSession
 from app.models.attendance_record import AttendanceRecord
@@ -8,6 +9,7 @@ from app.models.attendance_sheet import AttendanceSheet
 from app.models.classes import Class
 from app.models.result_batch import ResultBatch
 from app.models.school import School
+from app.models.school_academic_period import SchoolAcademicPeriod
 from app.models.subject import Subject
 from app.models.terms import Term
 from app.models.user import User, UserRole
@@ -79,37 +81,30 @@ class SchoolAdminDashboardRepository:
 
         return result.scalar() or 0
 
-    async def get_active_session(
-        self,
-        db,
-        school_id,
-    ):
+    async def get_current_period(self, db, school_id):
         result = await db.execute(
-            select(AcademicSession)
-            .where(
-                AcademicSession.school_id == school_id,
-                AcademicSession.is_active.is_(True),
+            select(SchoolAcademicPeriod)
+            .options(
+                selectinload(SchoolAcademicPeriod.session),
+                selectinload(SchoolAcademicPeriod.term),
             )
+            .where(
+                SchoolAcademicPeriod.school_id == school_id,
+                SchoolAcademicPeriod.is_current.is_(True),
+            )
+            .order_by(SchoolAcademicPeriod.updated_at.desc())
             .limit(1)
         )
 
-        return result.scalars().first()
+        return result.scalar_one_or_none()
 
-    async def get_active_term(
-        self,
-        db,
-        school_id,
-    ):
-        result = await db.execute(
-            select(Term)
-            .where(
-                Term.school_id == school_id,
-                Term.is_active.is_(True),
-            )
-            .limit(1)
-        )
+    async def get_active_session(self, db, school_id):
+        period = await self.get_current_period(db, school_id)
+        return period.session if period else None
 
-        return result.scalars().first()
+    async def get_active_term(self, db, school_id):
+        period = await self.get_current_period(db, school_id)
+        return period.term if period else None
 
     # =====================================================
     # ATTENDANCE

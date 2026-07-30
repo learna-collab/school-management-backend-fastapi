@@ -1,36 +1,54 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
-class LessonCreate(BaseModel):
-    class_id: str
-    subject_id: str
-    session_id: str
-    term_id: str
+class LessonALFResponse(BaseModel):
+    independent_reading: str | None = None
+    mini_lesson: str | None = None
+    case_study: str | None = None
+    project_based_learning: str | None = None
+    evaluation: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SimpleClassResponse(BaseModel):
+    id: str
+    name: str
+
+
+class SimpleSubjectResponse(BaseModel):
+    id: str
+    name: str
+
+
+class SimpleSessionResponse(BaseModel):
+    id: str
+    name: str
+
+
+class SimpleTermResponse(BaseModel):
+    id: str
+    name: str
+
+
+class LessonResponse(BaseModel):
+    id: str
+
+    week_number: int
+    lesson_day: str
+
+    class_name: str
+    subject_name: str
 
     title: str
     topic: str
 
     objectives: str | None = None
+    teacher_notes: str | None = None
 
     file_url: str | None = None
-
     is_published: bool = True
 
-class LessonUpdate(BaseModel):
-    title: str | None = None
+    alf: LessonALFResponse | None = None
 
-    topic: str | None = None
-
-    objectives: str | None = None
-
-    file_url: str | None = None
-
-    is_published: bool | None = None
-
-
-
-class LessonFilter(BaseModel):
-    class_id: str | None = None
-    subject_id: str | None = None
-    session_id: str | None = None
-    term_id: str | None = None
+    model_config = ConfigDict(from_attributes=True)

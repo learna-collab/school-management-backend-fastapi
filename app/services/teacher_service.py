@@ -1,15 +1,13 @@
 from fastapi import HTTPException
 
-from app.repositories.academic_session_repository import academic_session_repo
+from app.repositories.dashboard_repository import DashboardRepository
 from app.repositories.teacher_assignment_repository import teacher_assignment_repository
-from app.repositories.term_repository import term_repo
 
 
 class TeacherService:
     def __init__(self):
         self.repo = teacher_assignment_repository
-        self.session_repo = academic_session_repo
-        self.term_repo = term_repo
+        self.session_repo = DashboardRepository()
 
     async def get_classes(
         self,
@@ -44,12 +42,12 @@ class TeacherService:
         if not has_access:
             raise ValueError("You are not assigned to this class")
 
-        active_session = await self.session_repo.get_active(
+        active_session = await self.session_repo.get_active_session(
             db,
             user.school_id,
         )
 
-        active_term = await self.term_repo.get_active(
+        active_term = await self.session_repo.get_active_term(
             db,
             user.school_id,
         )

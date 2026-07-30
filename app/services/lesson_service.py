@@ -1,122 +1,152 @@
+import tempfile
+from pathlib import Path
+from uuid import UUID
+
+from fastapi import HTTPException, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.lesson import Lesson
-from app.repositories.lesson_repository import lesson_repo
-from app.utils.helper import serialize_lesson
+from app.models.lesson_alf import LessonALF
+from app.repositories.lesson_repository import LessonRepository
+from app.services.cloudinary_service import cloudinary_service
+from app.services.lesson_parser import LessonParser
 
 
 class LessonService:
-
     def __init__(self):
-        self.repo = lesson_repo
-    async def get_all_lessons(
-    self,
-    db,
-):
-        lessons = await self.repo.get_all_lessons(db)
+        self.repository = LessonRepository()
+        self.parser = LessonParser()
 
-        return {
-            "lessons": [
-                serialize_lesson(lesson)
-                for lesson in lessons
-            ],
-            "total": len(lessons),
-        }
-
-
-    async def get_lesson_by_id(
+    async def upload_lesson(
         self,
-        db,
-        lesson_id: str,
+        *,
+        db: AsyncSession,
+        created_by: UUID,
+        class_template_id: UUID,
+        subject_template_id: UUID,
+        session_id: UUID,
+        term_id: UUID,
+        week_number: int,
+        lesson_day: str,
+        file: UploadFile,
     ):
-        lesson = await self.repo.get_lesson_by_id(
-            db,
-            lesson_id,
-        )
-        return serialize_lesson(lesson)
+        suffix = Path(file.filename).suffix
 
-    async def get_lessons_filtered(
-    self,
-    db,
-    class_name=None,
-    subject_name=None,
-    session_name=None,
-    term_name=None,
-):
-        lessons = await self.repo.get_lessons_filtered(
-            db,
-            class_name=class_name,
-            subject_name=subject_name,
-            session_name=session_name,
-            term_name=term_name,
+        contents = await file.read()
+
+        # Upload original file to Cloudinary
+        file_url = await cloudinary_service.upload_bytes(
+            contents=contents,
+            filename=file.filename,
+            folder="lessons/daily",
+            public_id=(
+                f"{class_template_id}-{subject_template_id}-"
+                f"{session_id}-{term_id}-{week_number}-{lesson_day}"
+            ),
+            resource_type="auto",
         )
 
-        return {
-            "lessons": [
-                serialize_lesson(lesson)
-                for lesson in lessons
-            ],
-            "total": len(lessons),
-        }
-    async def create_lesson(
-        self,
-        db,
-        payload,
-        created_by,
-    ):
+        # Save temporarily for parsing
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=suffix,
+        ) as temp:
+            temp.write(contents)
+            temp_path = temp.name
+
+        # Parse lesson note
+        parsed = await self.parser.parse(
+            file_path=temp_path,
+            week_number=week_number,
+            lesson_day=lesson_day,
+        )
+
+        # Create lesson
         lesson = Lesson(
             created_by=created_by,
-
-            class_id=payload.class_id,
-            subject_id=payload.subject_id,
-
-            session_id=payload.session_id,
-            term_id=payload.term_id,
-
-            title=payload.title,
-            topic=payload.topic,
-
-            objectives=payload.objectives,
-            file_url=payload.file_url,
-
-            is_published=payload.is_published,
+            class_template_id=class_template_id,
+            subject_template_id=subject_template_id,
+            session_id=session_id,
+            term_id=term_id,
+            week_number=parsed.week_number,
+            lesson_day=parsed.lesson_day,
+            title=parsed.title or "Untitled Lesson",
+            topic=parsed.topic or parsed.title or "Untitled Lesson",
+            objectives=(parsed.objectives or "Objectives not extracted from document."),
+            teacher_notes=parsed.teacher_notes,
+            file_url=file_url,
         )
 
-        lesson = await self.repo.create(
+        lesson = await self.repository.create(db, lesson)
+
+        # Create ALF sections
+        alf = LessonALF(
+            lesson_id=lesson.id,
+            independent_reading=parsed.alf.independent_reading,
+            mini_lesson=parsed.alf.mini_lesson,
+            case_study=parsed.alf.case_study,
+            project_based_learning=parsed.alf.project_based_learning,
+            evaluation=parsed.alf.evaluation,
+        )
+
+        await self.repository.create_alf(db, alf)
+
+        await db.commit()
+
+        # Reload with relationships eagerly loaded
+        lesson = await self.repository.get_by_id(
             db,
-            lesson,
+            lesson.id,
         )
-        return serialize_lesson(lesson)
 
-    async def update_lesson(
+        return lesson
+
+    async def get_lesson(
         self,
-        db,
-        lesson_id,
-        payload,
+        db: AsyncSession,
+        lesson_id: UUID,
     ):
-        lesson = await self.repo.get_by_id(
-            db,
-            lesson_id,
+        return await self.repository.get_by_id(db, lesson_id)
+
+    async def get_classes(self, db: AsyncSession):
+        return await self.repository.get_all_classes(db)
+
+    async def get_subjects(self, db: AsyncSession):
+        return await self.repository.get_all_subjects(db)
+
+    async def get_sessions(self, db: AsyncSession):
+        return await self.repository.get_all_unique_sessions(db)
+
+    async def get_terms(self, db: AsyncSession):
+        return await self.repository.get_all_unique_terms(db)
+
+    async def get_lessons(
+        self,
+        db: AsyncSession,
+        *,
+        class_template_id: UUID,
+        subject_template_id: UUID,
+        session_id: UUID,
+        term_id: UUID,
+        week_number: int | None = None,
+    ):
+        return await self.repository.get_lessons(
+            db=db,
+            class_template_id=class_template_id,
+            subject_template_id=subject_template_id,
+            session_id=session_id,
+            term_id=term_id,
+            week_number=week_number,
         )
+
+    async def delete(
+        self,
+        db: AsyncSession,
+        lesson_id: UUID,
+    ):
+        lesson = await self.repository.get_by_id(db, lesson_id)
 
         if not lesson:
-            return None
+            raise HTTPException(status_code=404, detail="Lesson not found")
 
-        if payload.title is not None:
-            lesson.title = payload.title
-
-        if payload.topic is not None:
-            lesson.topic = payload.topic
-
-        if payload.objectives is not None:
-            lesson.objectives = payload.objectives
-
-        if payload.file_url is not None:
-            lesson.file_url = payload.file_url
-
-        if payload.is_published is not None:
-            lesson.is_published = payload.is_published
-
-        await self.repo.save(db)
-
-        return serialize_lesson(lesson)
-
-lesson_service = LessonService()
+        await self.repository.delete(db, lesson_id)

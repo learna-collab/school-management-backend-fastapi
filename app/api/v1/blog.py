@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_db
-from app.services.blog_services import BlogService
 from app.core.deps import RequireSuperAdmin
+from app.db.database import get_db
 from app.schemas.blog import BlogCreate, BlogUpdate  # 👈 ADD THIS
+from app.services.blog_services import BlogService
 
 router = APIRouter(tags=["Blogs"], prefix="/blogs")
 service = BlogService()

@@ -8,14 +8,15 @@ from app.models.attendance_record import (
     AttendanceStatus,
 )
 from app.models.attendance_sheet import AttendanceSheet
-from app.repositories.academic_session_repository import academic_session_repo
 from app.repositories.attendance_repository import (
     attendance_repository,
+)
+from app.repositories.school_admin_dashboard_repository import (
+    SchoolAdminDashboardRepository,
 )
 from app.repositories.teacher_assignment_repository import (
     teacher_assignment_repository,
 )
-from app.repositories.term_repository import term_repo
 from app.schemas.attendance import (
     AttendanceAnalyticsResponse,
     ClassAttendanceSummaryResponse,
@@ -26,8 +27,7 @@ class AttendanceService:
     def __init__(self):
         self.repo = attendance_repository
         self.assignment_repo = teacher_assignment_repository
-        self.session_repo = academic_session_repo
-        self.term_repo = term_repo
+        self.period_repo = SchoolAdminDashboardRepository()
 
     async def submit_attendance(
         self,
@@ -46,12 +46,12 @@ class AttendanceService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not assigned to this class.",
             )
-        active_session = await self.session_repo.get_active(
+        active_session = await self.period_repo.get_active_session(
             db,
             teacher.school_id,
         )
 
-        active_term = await self.term_repo.get_active(
+        active_term = await self.period_repo.get_active_term(
             db,
             teacher.school_id,
         )
@@ -148,12 +148,12 @@ class AttendanceService:
         class_id,
         attendance_date,
     ):
-        active_session = await self.session_repo.get_active(
+        active_session = await self.period_repo.get_active_session(
             db,
             teacher.school_id,
         )
 
-        active_term = await self.term_repo.get_active(
+        active_term = await self.period_repo.get_active_term(
             db,
             teacher.school_id,
         )

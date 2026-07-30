@@ -11,12 +11,11 @@ from app.models.result_batch import ResultBatch
 from app.models.result_record import ResultRecord
 from app.models.result_summary import ResultSummary
 from app.models.user import User
-from app.repositories.academic_session_repository import academic_session_repo
+from app.repositories.dashboard_repository import DashboardRepository
 from app.repositories.result_repository import result_repository
 from app.repositories.teacher_assignment_repository import (
     teacher_assignment_repository,
 )
-from app.repositories.term_repository import term_repo
 from app.schemas.result_responses import (
     ClassResultResponse,
     ResultBatchStatusResponse,
@@ -30,8 +29,7 @@ class ResultService:
     def __init__(self):
         self.repo = result_repository
         self.assignment_repo = teacher_assignment_repository
-        self.session_repo = academic_session_repo
-        self.term_repo = term_repo
+        self.period_repo = DashboardRepository()
 
     def calculate_grade(
         self,
@@ -61,12 +59,12 @@ class ResultService:
         teacher,
         status: str,
     ):
-        active_session = await self.session_repo.get_active(
+        active_session = await self.period_repo.get_active_session(
             db,
             teacher.school_id,
         )
 
-        active_term = await self.term_repo.get_active(
+        active_term = await self.period_repo.get_active_term(
             db,
             teacher.school_id,
         )
@@ -337,12 +335,12 @@ class ResultService:
                 detail="You are not assigned to this class.",
             )
 
-        session = await self.session_repo.get_active(
+        session = await self.period_repo.get_active_session(
             db,
             teacher.school_id,
         )
 
-        term = await self.term_repo.get_active(
+        term = await self.period_repo.get_active_term(
             db,
             teacher.school_id,
         )
@@ -457,8 +455,10 @@ class ResultService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not assigned to this class.",
             )
-        active_session = await self.session_repo.get_active(db, teacher.school_id)
-        active_term = await self.term_repo.get_active(db, teacher.school_id)
+        active_session = await self.period_repo.get_active_session(
+            db, teacher.school_id
+        )
+        active_term = await self.period_repo.get_active_term(db, teacher.school_id)
 
         batch = await self.repo.get_class_result_batch(
             db=db,
@@ -533,12 +533,12 @@ class ResultService:
         class_id,
         school_id,
     ):
-        active_session = await self.session_repo.get_active(
+        active_session = await self.period_repo.get_active_session(
             db,
             school_id,
         )
 
-        active_term = await self.term_repo.get_active(
+        active_term = await self.period_repo.get_active_term(
             db,
             school_id,
         )
@@ -913,7 +913,7 @@ class ResultService:
         term_id=None,
     ):
         if session_id is None:
-            active_session = await self.session_repo.get_active(
+            active_session = await self.period_repo.get_active_session(
                 db,
                 school_id,
             )
@@ -921,7 +921,7 @@ class ResultService:
             session_id = active_session.id
 
         if term_id is None:
-            active_term = await self.term_repo.get_active(
+            active_term = await self.period_repo.get_active_term(
                 db,
                 school_id,
             )

@@ -45,19 +45,55 @@ class CBTRepository:
 
         return result.scalar_one_or_none()
 
-    async def get_class_exams(
+    async def get_student_available_exams(
         self,
         db: AsyncSession,
         class_id: UUID,
+        student_id: UUID,
     ):
         result = await db.execute(
-            select(CBTExam).where(
+            select(CBTExam, CBTAttempt)
+            .outerjoin(
+                CBTAttempt,
+                (CBTAttempt.exam_id == CBTExam.id)
+                & (CBTAttempt.student_id == student_id),
+            )
+            .where(
                 CBTExam.class_id == class_id,
-                CBTExam.is_published == True,
+                CBTExam.is_published.is_(True),
+            )
+            .options(
+                selectinload(CBTExam.school_class),
+                selectinload(CBTExam.subject),
+                selectinload(CBTExam.questions),
+            )
+            .order_by(CBTExam.starts_at.asc())
+        )
+
+        return [
+            {
+                "exam": exam,
+                "attempt": attempt,
+            }
+            for exam, attempt in result.all()
+        ]
+
+    async def get_exam_for_student(
+        self,
+        db: AsyncSession,
+        exam_id: UUID,
+    ):
+        result = await db.execute(
+            select(CBTExam)
+            .where(CBTExam.id == exam_id)
+            .options(
+                selectinload(CBTExam.questions).selectinload(CBTQuestion.options),
+                selectinload(CBTExam.subject),
+                selectinload(CBTExam.school_class),
             )
         )
 
-        return result.scalars().all()
+        return result.scalar_one_or_none()
 
     async def create_question(
         self,
@@ -115,7 +151,74 @@ class CBTRepository:
 
         return attempt
 
-    async def get_student_attempt(
+    async def get_active_student_attempt(
+        self,
+        db: AsyncSession,
+        exam_id: UUID,
+        student_id: UUID,
+    ) -> CBTAttempt | None:
+        stmt = (
+            select(CBTAttempt)
+            .where(
+                CBTAttempt.exam_id == exam_id,
+                CBTAttempt.student_id == student_id,
+                CBTAttempt.submitted_at.is_(None),
+            )
+            .options(
+                selectinload(CBTAttempt.exam)
+                .selectinload(CBTExam.questions)
+                .selectinload(CBTQuestion.options),
+                selectinload(CBTAttempt.answers).selectinload(CBTAnswer.question),
+                selectinload(CBTAttempt.answers).selectinload(
+                    CBTAnswer.selected_option,
+                ),
+            )
+        )
+
+        result = await db.execute(stmt)
+
+        return result.scalar_one_or_none()
+
+    async def update_current_question(
+        self,
+        db: AsyncSession,
+        attempt_id: UUID,
+        current_question_index: int,
+    ):
+        attempt = await db.get(CBTAttempt, attempt_id)
+
+        if not attempt:
+            return None
+
+        attempt.current_question_index = current_question_index
+
+        await db.commit()
+        await db.refresh(attempt)
+
+        return attempt
+
+    async def get_student_attempt_details(
+        self,
+        db: AsyncSession,
+        attempt_id: UUID,
+    ):
+        result = await db.execute(
+            select(CBTAttempt)
+            .where(CBTAttempt.id == attempt_id)
+            .options(
+                selectinload(CBTAttempt.answers).selectinload(
+                    CBTAnswer.selected_option
+                ),
+                selectinload(CBTAttempt.exam).selectinload(CBTExam.subject),
+                selectinload(CBTAttempt.exam)
+                .selectinload(CBTExam.questions)
+                .selectinload(CBTQuestion.options),
+            )
+        )
+
+        return result.scalar_one_or_none()
+
+    async def get_student_exam_attempt(
         self,
         db: AsyncSession,
         exam_id: UUID,
@@ -221,7 +324,7 @@ class CBTRepository:
             .where(CBTAnswer.attempt_id == attempt_id)
             .options(
                 selectinload(CBTAnswer.question),
-                selectinload(CBTAnswer.option),
+                selectinload(CBTAnswer.selected_option),
             )
         )
 
@@ -327,8 +430,8 @@ class CBTRepository:
     ):
         result = await db.execute(
             select(CBTAttempt)
+            .options(selectinload(CBTAttempt.exam).selectinload(CBTExam.subject))
             .where(CBTAttempt.student_id == student_id)
-            .options(selectinload(CBTAttempt.exam))
             .order_by(CBTAttempt.started_at.desc())
         )
 
@@ -499,3 +602,14 @@ class CBTRepository:
         )
 
         return result.mappings().one()
+
+    async def get_option(
+        self,
+        db: AsyncSession,
+        option_id: UUID,
+    ):
+        result = await db.execute(
+            select(CBTQuestionOption).where(CBTQuestionOption.id == option_id)
+        )
+
+        return result.scalar_one_or_none()

@@ -14,6 +14,7 @@ from app.models.enrollment import StudentEnrollment
 from app.models.lesson import Lesson
 from app.models.result_batch import ResultBatch
 from app.models.result_summary import ResultSummary
+from app.models.school_academic_period import SchoolAcademicPeriod
 from app.models.student import StudentProfile
 from app.models.teacher import TeacherProfile
 from app.models.teacher_class_subject import TeacherClassSubject
@@ -25,33 +26,30 @@ class DashboardRepository:
     # ACTIVE SESSION
     # ==================================================
 
-    async def get_active_session(
-        self,
-        db,
-        school_id,
-    ):
+    async def get_current_period(self, db, school_id):
         result = await db.execute(
-            select(AcademicSession).where(
-                AcademicSession.school_id == school_id,
-                AcademicSession.is_active.is_(True),
+            select(SchoolAcademicPeriod)
+            .options(
+                selectinload(SchoolAcademicPeriod.session),
+                selectinload(SchoolAcademicPeriod.term),
             )
+            .where(
+                SchoolAcademicPeriod.school_id == school_id,
+                SchoolAcademicPeriod.is_current.is_(True),
+            )
+            .order_by(SchoolAcademicPeriod.updated_at.desc())
+            .limit(1)
         )
 
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
-    async def get_active_term(
-        self,
-        db,
-        school_id,
-    ):
-        result = await db.execute(
-            select(Term).where(
-                Term.school_id == school_id,
-                Term.is_active.is_(True),
-            )
-        )
+    async def get_active_session(self, db, school_id):
+        period = await self.get_current_period(db, school_id)
+        return period.session if period else None
 
-        return result.scalar_one_or_none()
+    async def get_active_term(self, db, school_id):
+        period = await self.get_current_period(db, school_id)
+        return period.term if period else None
 
     # ==================================================
     # STUDENT

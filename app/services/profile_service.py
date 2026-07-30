@@ -2,7 +2,7 @@ import random
 from datetime import datetime
 
 from app.models.user import UserRole
-from app.repositories.academic_session_repository import academic_session_repo
+from app.repositories.dashboard_repository import DashboardRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.schemas.profiles import (
     ParentProfileCreate,
@@ -24,7 +24,7 @@ ALLOWED_PROFILE_ROLES = {
 class ProfileService:
     def __init__(self):
         self.repo = ProfileRepository()
-        self.session_repo = academic_session_repo
+        self.session_repo = DashboardRepository()
         self.school_assignment_service = school_assignment_service
 
     # =====================================================
@@ -227,7 +227,7 @@ class ProfileService:
             )
 
             if class_id:
-                active_session = await self.session_repo.get_active(
+                active_session = await self.session_repo.get_active_session(
                     db,
                     user.school_id,
                 )

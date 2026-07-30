@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    UniqueConstraint,
 )
 from sqlalchemy import (
     Enum as SQLEnum,
@@ -86,6 +87,10 @@ class CBTAttempt(
         Integer,
         default=0,
     )
+    current_question_index: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+    )
 
     status: Mapped[AttemptStatus] = mapped_column(
         SQLEnum(AttemptStatus),
@@ -117,6 +122,11 @@ class CBTAttempt(
     )
 
     __table_args__ = (
+        UniqueConstraint(
+            "exam_id",
+            "student_id",
+            name="uq_exam_student_attempt",
+        ),
         Index(
             "ix_exam_student_attempt",
             "exam_id",

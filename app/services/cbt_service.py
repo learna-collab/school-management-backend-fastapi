@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cbt_answer import CBTAnswer
-from app.models.cbt_attempt import CBTAttempt
+from app.models.cbt_attempt import AttemptStatus, CBTAttempt
 from app.models.cbt_exam import CBTExam
 from app.models.cbt_question import CBTQuestion
 from app.models.cbt_question_option import CBTQuestionOption
@@ -28,6 +28,7 @@ from app.schemas.cbt import (
     CBTResultsDashboardResponse,
     CBTResultsDashboardStats,
     ExamApiResponse,
+    ExamAttemptStatus,
     ExamListApiResponse,
     ExamListResponse,
     ExamResponse,
@@ -35,6 +36,20 @@ from app.schemas.cbt import (
     QuestionApiResponse,
     QuestionCreate,
     QuestionResponse,
+    StudentExamAttemptApiResponse,
+    StudentExamAttemptResponse,
+    StudentExamListApiResponse,
+    StudentExamListResponse,
+    StudentExamResponse,
+    StudentExamResultApiResponse,
+    StudentExamResultResponse,
+    StudentHistoryApiResponse,
+    StudentHistoryItem,
+    StudentHistoryResponse,
+    StudentQuestionOptionResponse,
+    StudentQuestionResponse,
+    StudentResultApiResponse,
+    StudentResultResponse,
     SubmitAnswerRequest,
 )
 
@@ -43,6 +58,109 @@ class CBTService:
     def __init__(self):
         self.repo = CBTRepository()
         self.da = DashboardRepository()
+
+    def build_student_exam_response(
+        self,
+        attempt: CBTAttempt,
+    ):
+        exam = attempt.exam
+
+        expires_at = attempt.started_at + timedelta(
+            minutes=exam.duration_minutes,
+        )
+
+        remaining_seconds = max(
+            0,
+            int((expires_at - datetime.now(UTC)).total_seconds()),
+        )
+
+        # Build once
+        answer_map = {answer.question_id: answer for answer in attempt.answers}
+
+        questions: list[StudentQuestionResponse] = []
+
+        for question in exam.questions:
+            selected_answer = answer_map.get(question.id)
+
+            options = [
+                StudentQuestionOptionResponse(
+                    id=option.id,
+                    option_label=option.option_label,
+                    option_text=option.option_text,
+                    option_order=option.option_order,
+                )
+                for option in question.options
+            ]
+
+            questions.append(
+                StudentQuestionResponse(
+                    id=question.id,
+                    question_text=question.question,
+                    marks=question.marks,
+                    order_no=question.question_order,
+                    selected_option_id=(
+                        selected_answer.selected_option_id if selected_answer else None
+                    ),
+                    options=options,
+                )
+            )
+
+        return StudentExamAttemptResponse(
+            attempt_id=attempt.id,
+            exam_id=exam.id,
+            title=exam.title,
+            instructions=exam.instructions,
+            duration_minutes=exam.duration_minutes,
+            total_marks=exam.total_marks,
+            started_at=attempt.started_at,
+            completed_at=attempt.submitted_at,
+            expires_at=expires_at,
+            remaining_seconds=remaining_seconds,
+            # Resume support
+            current_question_index=attempt.current_question_index,
+            questions=questions,
+        )
+
+    async def update_current_question(
+        self,
+        db: AsyncSession,
+        attempt_id: UUID,
+        student_id: UUID,
+        current_question_index: int,
+    ):
+        attempt = await self.repo.get_attempt(
+            db,
+            attempt_id,
+        )
+
+        if not attempt:
+            raise HTTPException(
+                status_code=404,
+                detail="Attempt not found.",
+            )
+
+        if attempt.student_id != student_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Unauthorized.",
+            )
+
+        if attempt.submitted_at:
+            raise HTTPException(
+                status_code=400,
+                detail="Exam already submitted.",
+            )
+
+        await self.repo.update_current_question(
+            db,
+            attempt_id,
+            current_question_index,
+        )
+
+        return {
+            "success": True,
+            "message": "Current question updated.",
+        }
 
     async def create_exam(
         self,
@@ -63,8 +181,8 @@ class CBTService:
             instructions=payload.instructions,
             duration_minutes=payload.duration_minutes,
             total_marks=payload.total_marks,
-            starts_at=payload.starts_at,
-            ends_at=payload.ends_at,
+            # starts_at=payload.starts_at,
+            # ends_at=payload.ends_at,
         )
 
         exam = await self.repo.create_exam(
@@ -109,8 +227,8 @@ class CBTService:
         exam.duration_minutes = payload.duration_minutes
         exam.total_marks = payload.total_marks
 
-        exam.starts_at = payload.starts_at
-        exam.ends_at = payload.ends_at
+        # starts_at and ends_at are intentionally not updated.
+        # Every student's timer starts when they begin the exam.
 
         await db.commit()
         await db.refresh(exam)
@@ -179,19 +297,68 @@ class CBTService:
     async def get_available_exams(
         self,
         db: AsyncSession,
-        class_id: UUID,
-    ) -> ExamListApiResponse:
-        exams = await self.repo.get_class_exams(
-            db,
-            class_id,
+        user: User,
+    ):
+        current_enrollment = next(
+            (enrollment for enrollment in user.enrollments if enrollment.is_current),
+            None,
         )
 
-        return ExamListApiResponse(
+        if current_enrollment is None:
+            return StudentExamListApiResponse(
+                success=True,
+                message="No available examinations.",
+                data=StudentExamListResponse(
+                    exams=[],
+                    count=0,
+                ),
+            )
+
+        exams = await self.repo.get_student_available_exams(
+            db=db,
+            class_id=current_enrollment.class_id,
+            student_id=user.id,
+        )
+
+        responses: list[StudentExamResponse] = []
+
+        for item in exams:
+            exam: CBTExam = item["exam"]
+            attempt: CBTAttempt | None = item["attempt"]
+
+            if attempt is None:
+                status = ExamAttemptStatus.NOT_STARTED
+                attempt_id = None
+
+            elif attempt.submitted_at is not None:
+                status = ExamAttemptStatus.COMPLETED
+                attempt_id = attempt.id
+
+            else:
+                status = ExamAttemptStatus.IN_PROGRESS
+                attempt_id = attempt.id
+
+            responses.append(
+                StudentExamResponse(
+                    id=exam.id,
+                    title=exam.title,
+                    instructions=exam.instructions,
+                    duration_minutes=exam.duration_minutes,
+                    total_marks=exam.total_marks,
+                    subject_name=exam.subject.name,
+                    class_name=exam.school_class.name,
+                    question_count=len(exam.questions),
+                    attempt_status=status,
+                    attempt_id=attempt_id,
+                )
+            )
+
+        return StudentExamListApiResponse(
             success=True,
-            message="Available exams retrieved successfully.",
-            data=ExamListResponse(
-                exams=[ExamResponse.model_validate(exam) for exam in exams],
-                count=len(exams),
+            message="Available examinations retrieved successfully.",
+            data=StudentExamListResponse(
+                exams=responses,
+                count=len(responses),
             ),
         )
 
@@ -200,59 +367,91 @@ class CBTService:
         db: AsyncSession,
         exam_id: UUID,
         student_id: UUID,
-    ) -> AttemptApiResponse:
-        exam = await self.repo.get_exam(
+    ):
+        exam = await self.repo.get_exam_for_student(
             db,
             exam_id,
         )
 
         if not exam:
-            return AttemptApiResponse(
+            return StudentExamAttemptApiResponse(
                 success=False,
                 message="Exam not found.",
                 data=None,
             )
 
         if not exam.is_published:
-            return AttemptApiResponse(
+            return StudentExamAttemptApiResponse(
                 success=False,
                 message="Exam is not available.",
                 data=None,
             )
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
-        if now < exam.start_time:
-            return AttemptApiResponse(
-                success=False,
-                message="Exam has not started.",
-                data=None,
-            )
-
-        if now > exam.end_time:
-            return AttemptApiResponse(
-                success=False,
-                message="Exam has ended.",
-                data=None,
-            )
-
-        existing = await self.repo.get_student_attempt(
+        existing = await self.repo.get_student_exam_attempt(
             db,
             exam_id,
             student_id,
         )
 
+        # -----------------------------------------------------
+        # Existing attempt (idempotent)
+        # -----------------------------------------------------
+
         if existing:
-            return AttemptApiResponse(
-                success=False,
-                message="You have already started this exam.",
-                data=AttemptResponse.model_validate(existing),
+            # Already submitted
+            if existing.submitted_at is not None:
+                return StudentExamAttemptApiResponse(
+                    success=False,
+                    message="You already completed this exam.",
+                    data=None,
+                )
+
+            # Time elapsed since exam started
+            elapsed_seconds = int((now - existing.started_at).total_seconds())
+
+            allowed_seconds = exam.duration_minutes * 60
+
+            # Time has expired -> auto submit
+            if elapsed_seconds >= allowed_seconds:
+                await self.submit_exam(
+                    db=db,
+                    attempt_id=existing.id,
+                    student_id=student_id,
+                )
+
+                return StudentExamAttemptApiResponse(
+                    success=False,
+                    message="Your examination time has elapsed and your exam has been submitted.",
+                    data=None,
+                )
+
+            existing = await self.repo.get_student_attempt_details(
+                db,
+                existing.id,
             )
 
+            return StudentExamAttemptApiResponse(
+                success=True,
+                message="Exam resumed.",
+                data=self.build_student_exam_response(existing),
+            )
+
+        # -----------------------------------------------------
+        # First attempt
+        # -----------------------------------------------------
+
         attempt = CBTAttempt(
+            school_id=exam.school_id,
             exam_id=exam.id,
             student_id=student_id,
             started_at=now,
+            score=0,
+            total_marks=exam.total_marks,
+            percentage=0,
+            status=AttemptStatus.IN_PROGRESS,
+            is_passed=False,
         )
 
         attempt = await self.repo.create_attempt(
@@ -260,18 +459,24 @@ class CBTService:
             attempt,
         )
 
-        return AttemptApiResponse(
+        attempt = await self.repo.get_student_attempt_details(
+            db,
+            attempt.id,
+        )
+
+        return StudentExamAttemptApiResponse(
             success=True,
             message="Exam started successfully.",
-            data=AttemptResponse.model_validate(attempt),
+            data=self.build_student_exam_response(attempt),
         )
 
     async def submit_answer(
         self,
         db: AsyncSession,
         payload: SubmitAnswerRequest,
-    ) -> AnswerApiResponse:
-        attempt = await self.repo.get_attempt(
+        student_id: UUID,
+    ):
+        attempt = await self.repo.get_student_attempt_details(
             db,
             payload.attempt_id,
         )
@@ -283,12 +488,102 @@ class CBTService:
                 data=None,
             )
 
-        if attempt.completed_at:
+        # ---------------------------------------------------------
+        # SECURITY 1: Ensure owner
+        # ---------------------------------------------------------
+
+        if attempt.student_id != student_id:
             return AnswerApiResponse(
                 success=False,
-                message="Exam has already been submitted.",
+                message="Unauthorized attempt.",
                 data=None,
             )
+
+        # ---------------------------------------------------------
+        # SECURITY 2: Already submitted
+        # ---------------------------------------------------------
+
+        if attempt.submitted_at is not None:
+            return AnswerApiResponse(
+                success=False,
+                message="Exam already submitted.",
+                data=None,
+            )
+
+        exam = attempt.exam
+
+        # ---------------------------------------------------------
+        # SECURITY 3: Student timer
+        # ---------------------------------------------------------
+
+        now = datetime.now(UTC)
+
+        expires_at = attempt.started_at + timedelta(
+            minutes=exam.duration_minutes,
+        )
+
+        if now >= expires_at:
+            await self.submit_exam(
+                db=db,
+                attempt_id=attempt.id,
+                student_id=student_id,
+            )
+
+            return AnswerApiResponse(
+                success=False,
+                message="Time has elapsed. Your examination has been submitted.",
+                data=None,
+            )
+
+        # ---------------------------------------------------------
+        # SECURITY 4: Question belongs to exam
+        # ---------------------------------------------------------
+
+        question = await self.repo.get_question(
+            db,
+            payload.question_id,
+        )
+
+        if not question:
+            return AnswerApiResponse(
+                success=False,
+                message="Question not found.",
+                data=None,
+            )
+
+        if question.exam_id != attempt.exam_id:
+            return AnswerApiResponse(
+                success=False,
+                message="Question does not belong to this examination.",
+                data=None,
+            )
+
+        # ---------------------------------------------------------
+        # SECURITY 5: Option belongs to question
+        # ---------------------------------------------------------
+
+        option = await self.repo.get_option(
+            db,
+            payload.option_id,
+        )
+
+        if not option:
+            return AnswerApiResponse(
+                success=False,
+                message="Option not found.",
+                data=None,
+            )
+
+        if option.question_id != question.id:
+            return AnswerApiResponse(
+                success=False,
+                message="Option does not belong to this question.",
+                data=None,
+            )
+
+        # ---------------------------------------------------------
+        # UPSERT ANSWER
+        # ---------------------------------------------------------
 
         existing = await self.repo.get_answer(
             db,
@@ -297,7 +592,7 @@ class CBTService:
         )
 
         if existing:
-            existing.option_id = payload.option_id
+            existing.selected_option_id = payload.option_id
 
             updated = await self.repo.update_answer(
                 db,
@@ -306,14 +601,14 @@ class CBTService:
 
             return AnswerApiResponse(
                 success=True,
-                message="Answer updated successfully.",
+                message="Answer updated.",
                 data=AnswerResponse.model_validate(updated),
             )
 
         answer = CBTAnswer(
             attempt_id=payload.attempt_id,
             question_id=payload.question_id,
-            option_id=payload.option_id,
+            selected_option_id=payload.option_id,
         )
 
         answer = await self.repo.create_answer(
@@ -323,72 +618,8 @@ class CBTService:
 
         return AnswerApiResponse(
             success=True,
-            message="Answer submitted successfully.",
+            message="Answer saved.",
             data=AnswerResponse.model_validate(answer),
-        )
-
-    async def submit_exam(
-        self,
-        db: AsyncSession,
-        attempt_id: UUID,
-    ) -> AttemptApiResponse:
-        attempt = await self.repo.get_attempt(
-            db,
-            attempt_id,
-        )
-
-        if not attempt:
-            return AttemptApiResponse(
-                success=False,
-                message="Attempt not found.",
-                data=None,
-            )
-
-        if attempt.completed_at:
-            return AttemptApiResponse(
-                success=True,
-                message="Exam already submitted.",
-                data=AttemptResponse.model_validate(attempt),
-            )
-
-        answers = await self.repo.get_attempt_answers(
-            db,
-            attempt_id,
-        )
-
-        score = 0
-
-        for answer in answers:
-            if answer.option.is_correct:
-                score += answer.question.marks
-
-        exam = await self.repo.get_exam(
-            db,
-            attempt.exam_id,
-        )
-
-        percentage = 0.0
-
-        if exam.total_marks:
-            percentage = round(
-                score / exam.total_marks * 100,
-                2,
-            )
-
-        attempt.score = score
-        attempt.percentage = percentage
-        attempt.passed = percentage >= 50
-        attempt.completed_at = datetime.utcnow()
-
-        attempt = await self.repo.submit_attempt(
-            db,
-            attempt,
-        )
-
-        return AttemptApiResponse(
-            success=True,
-            message="Exam submitted successfully.",
-            data=AttemptResponse.model_validate(attempt),
         )
 
     async def get_school_exams(
@@ -607,8 +838,8 @@ class CBTService:
                 average_score=round(sum(scores) / len(scores), 2),
                 highest_score=max(scores),
                 lowest_score=min(scores),
-                passed_count=sum(1 for a in attempts if a.passed),
-                failed_count=sum(1 for a in attempts if not a.passed),
+                passed_count=sum(1 for a in attempts if a.is_passed),
+                failed_count=sum(1 for a in attempts if not a.is_passed),
             ),
         )
 
@@ -642,39 +873,33 @@ class CBTService:
     async def resume_exam(
         self,
         db: AsyncSession,
-        attempt_id: UUID,
+        exam_id: UUID,
         student_id: UUID,
-    ) -> AttemptApiResponse:
-        attempt = await self.repo.get_attempt(
-            db,
-            attempt_id,
+    ):
+        attempt = await self.repo.get_active_student_attempt(
+            db=db,
+            exam_id=exam_id,
+            student_id=student_id,
         )
 
-        if not attempt:
-            return AttemptApiResponse(
+        if attempt is None:
+            return StudentExamAttemptApiResponse(
                 success=False,
                 message="Attempt not found.",
                 data=None,
             )
 
-        if attempt.student_id != student_id:
-            return AttemptApiResponse(
+        if attempt.submitted_at is not None:
+            return StudentExamAttemptApiResponse(
                 success=False,
-                message="Unauthorized.",
+                message="Exam already submitted.",
                 data=None,
             )
 
-        if attempt.completed_at:
-            return AttemptApiResponse(
-                success=False,
-                message="This exam has already been submitted.",
-                data=None,
-            )
-
-        return AttemptApiResponse(
+        return StudentExamAttemptApiResponse(
             success=True,
             message="Exam resumed successfully.",
-            data=AttemptResponse.model_validate(attempt),
+            data=self.build_student_exam_response(attempt),
         )
 
     async def get_student_result(
@@ -682,60 +907,107 @@ class CBTService:
         db: AsyncSession,
         attempt_id: UUID,
         student_id: UUID,
-    ) -> AttemptApiResponse:
-        attempt = await self.repo.get_attempt(
+    ):
+        attempt = await self.repo.get_student_attempt_details(
             db,
             attempt_id,
         )
 
         if not attempt:
-            return AttemptApiResponse(
+            return StudentResultApiResponse(
                 success=False,
-                message="Attempt not found.",
+                message="Result not found.",
                 data=None,
             )
 
         if attempt.student_id != student_id:
-            return AttemptApiResponse(
+            return StudentResultApiResponse(
                 success=False,
                 message="Unauthorized.",
                 data=None,
             )
 
-        if not attempt.completed_at:
-            return AttemptApiResponse(
+        if not attempt.submitted_at:
+            return StudentResultApiResponse(
                 success=False,
-                message="Exam has not been submitted.",
+                message="Exam not completed.",
                 data=None,
             )
 
-        return AttemptApiResponse(
+        answers = await self.repo.get_attempt_answers(
+            db,
+            attempt_id,
+        )
+        exam = attempt.exam
+        answers_map = {answer.question_id: answer for answer in answers}
+
+        correct = 0
+        wrong = 0
+        unanswered = 0
+
+        for question in exam.questions:
+            answer = answers_map.get(question.id)
+
+            if answer is None:
+                unanswered += 1
+            elif answer.selected_option.is_correct:
+                correct += 1
+            else:
+                wrong += 1
+        print(attempt.is_passed)
+        return StudentResultApiResponse(
             success=True,
             message="Result retrieved successfully.",
-            data=AttemptResponse.model_validate(attempt),
+            data=StudentResultResponse(
+                attempt_id=attempt.id,
+                exam_id=exam.id,
+                exam_title=exam.title,
+                subject_name=exam.subject.name,
+                total_marks=exam.total_marks,
+                score=attempt.score,
+                percentage=attempt.percentage,
+                passed=attempt.is_passed,
+                total_questions=len(exam.questions),
+                answered_questions=correct + wrong,
+                correct_answers=correct,
+                wrong_answers=wrong,
+                started_at=attempt.started_at,
+                completed_at=attempt.submitted_at,
+            ),
         )
 
     async def get_student_history(
         self,
         db: AsyncSession,
         student_id: UUID,
-    ) -> AttemptListApiResponse:
+    ):
         attempts = await self.repo.get_student_attempt_history(
             db,
             student_id,
         )
 
-        return AttemptListApiResponse(
+        history = []
+
+        for attempt in attempts:
+            history.append(
+                StudentHistoryItem(
+                    attempt_id=attempt.id,
+                    exam_id=attempt.exam.id,
+                    exam_title=attempt.exam.title,
+                    subject_name=attempt.exam.subject.name,
+                    score=attempt.score,
+                    percentage=attempt.percentage,
+                    passed=attempt.is_passed,
+                    completed_at=attempt.submitted_at,
+                )
+            )
+
+        return StudentHistoryApiResponse(
             success=True,
             message="History retrieved successfully.",
-            data=AttemptListResponse(
-                attempts=[
-                    AttemptResponse.model_validate(
-                        attempt,
-                    )
-                    for attempt in attempts
-                ],
-                count=len(attempts),
+            data=StudentHistoryResponse(
+                attempts=history,
+                count=len(history),
             ),
         )
 
@@ -774,8 +1046,8 @@ class CBTService:
                     float(row["average_percentage"]),
                     2,
                 ),
-                highest_score=int(row["highest_score"]),
-                lowest_score=int(row["lowest_score"]),
+                highest_score=round(float(row["highest_score"]), 2),
+                lowest_score=round(float(row["lowest_score"]), 2),
                 pass_rate=round(
                     float(row["pass_rate"]),
                     2,
@@ -808,5 +1080,136 @@ class CBTService:
                 results=results,
                 count=len(results),
                 stats=stats,
+            ),
+        )
+
+    async def submit_exam(
+        self,
+        db: AsyncSession,
+        attempt_id: UUID,
+        student_id: UUID,
+    ):
+        attempt = await self.repo.get_student_attempt_details(
+            db,
+            attempt_id,
+        )
+
+        if not attempt:
+            return StudentExamResultApiResponse(
+                success=False,
+                message="Attempt not found.",
+                data=None,
+            )
+
+        if attempt.student_id != student_id:
+            return StudentExamResultApiResponse(
+                success=False,
+                message="Unauthorized attempt.",
+                data=None,
+            )
+
+        # Idempotency
+        if attempt.submitted_at is not None:
+            return StudentExamResultApiResponse(
+                success=False,
+                message="Exam has already been submitted.",
+                data=None,
+            )
+
+        exam = attempt.exam
+
+        # =====================================================
+        # SERVER TIMER (SOURCE OF TRUTH)
+        # =====================================================
+
+        now = datetime.now(UTC)
+
+        expires_at = attempt.started_at + timedelta(
+            minutes=exam.duration_minutes,
+        )
+
+        completed_at = min(now, expires_at)
+
+        duration_taken = int((completed_at - attempt.started_at).total_seconds())
+
+        # =====================================================
+        # LOAD ANSWERS
+        # =====================================================
+
+        answers = await self.repo.get_attempt_answers(
+            db,
+            attempt_id,
+        )
+
+        answer_map = {answer.question_id: answer for answer in answers}
+
+        correct = 0
+        wrong = 0
+        unanswered = 0
+        score = 0
+
+        for question in exam.questions:
+            answer = answer_map.get(question.id)
+
+            if answer is None:
+                unanswered += 1
+                continue
+
+            if answer.selected_option.is_correct:
+                correct += 1
+                score += question.marks
+            else:
+                wrong += 1
+
+        # =====================================================
+        # SCORE
+        # =====================================================
+
+        total_marks = exam.total_marks
+
+        percentage = round((score / total_marks) * 100, 2) if total_marks > 0 else 0
+
+        pass_mark = getattr(exam, "pass_mark", 50)
+
+        is_passed = percentage >= pass_mark
+
+        # =====================================================
+        # UPDATE ATTEMPT
+        # =====================================================
+
+        attempt.score = score
+        attempt.percentage = percentage
+        attempt.is_passed = is_passed
+        attempt.status = AttemptStatus.SUBMITTED
+
+        attempt.submitted_at = completed_at
+        attempt.duration_taken = duration_taken
+
+        await self.repo.submit_attempt(
+            db,
+            attempt,
+        )
+
+        # =====================================================
+        # RESPONSE
+        # =====================================================
+
+        return StudentExamResultApiResponse(
+            success=True,
+            message="Exam submitted successfully.",
+            data=StudentExamResultResponse(
+                attempt_id=attempt.id,
+                exam_id=exam.id,
+                title=exam.title,
+                score=score,
+                total_marks=total_marks,
+                percentage=percentage,
+                passed=is_passed,
+                correct_answers=correct,
+                wrong_answers=wrong,
+                unanswered_questions=unanswered,
+                answered_questions=correct + wrong,
+                total_questions=len(exam.questions),
+                completed_at=completed_at,
             ),
         )

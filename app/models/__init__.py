@@ -14,6 +14,7 @@ from .class_template import ClassTemplate
 from .classes import AcademicLevel, Class
 from .enrollment import StudentEnrollment
 from .lesson import Lesson
+from .lesson_alf import LessonALF
 from .parent import ParentProfile
 from .parent_student import StudentParent
 from .password_reset import PasswordResetToken
@@ -23,6 +24,7 @@ from .result_batch import ResultBatch
 from .result_record import ResultRecord
 from .result_summary import ResultSummary
 from .school import School
+from .school_academic_period import SchoolAcademicPeriod
 from .student import StudentProfile
 from .subject import Subject
 from .subject_template import SubjectTemplate
@@ -50,6 +52,7 @@ __all__ = [
     "ClassTeacher",
     "ClassTemplate",
     "Lesson",
+    "LessonALF",
     "ParentProfile",
     "PasswordResetToken",
     "RefreshToken",
@@ -58,6 +61,7 @@ __all__ = [
     "ResultRecord",
     "ResultSummary",
     "School",
+    "SchoolAcademicPeriod",
     "StudentEnrollment",
     "StudentParent",
     "StudentProfile",

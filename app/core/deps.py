@@ -45,7 +45,14 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception  # noqa: B904
 
-    stmt = select(User).where(User.id == user_id).options(selectinload(User.school))
+    stmt = (
+        select(User)
+        .where(User.id == user_id)
+        .options(
+            selectinload(User.school),
+            selectinload(User.enrollments),
+        )
+    )
 
     result = await session.execute(stmt)
 

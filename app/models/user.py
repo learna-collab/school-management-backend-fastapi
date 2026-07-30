@@ -133,4 +133,4 @@ class User(Base, UUIDMixin, TimestampMixin, TenantMixin):
 
     @property
     def school_logo(self):
-        return self.school.logo if self.school else None
+        return self.school.logo_url if self.school else None

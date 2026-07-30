@@ -5,17 +5,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import DBSession, RequireSchoolAdmin
+from app.core.deps import CurrentUser, DBSession, RequireSchoolAdmin
 from app.db.database import get_db
 from app.schemas.academic_session import AcademicSessionCreate
 from app.schemas.attendance import AttendanceAnalyticsResponse
 from app.schemas.result_responses import (
     ApprovalHistoryItem,
     ClassResultResponse,
-    ResultBatchCreate,
 )
 from app.schemas.result_schema import (
-    PublishResultRequest,
     RejectResultRequest,
     UpdateResultRecord,
 )
@@ -29,9 +27,7 @@ from app.schemas.school_admin import (
 from app.schemas.subject import CreateSubjectRequest
 from app.schemas.teacher_assignmet import CreateClassRequest, PromoteStudentsRequest
 from app.schemas.term import TermCreate
-from app.services.academic_session_service import academic_session_service
 from app.services.attendance_service import attendance_service
-from app.services.lesson_service import lesson_service
 from app.services.result_service import result_service
 from app.services.school_admin_dashboard_service import school_admin_dashboard_service
 from app.services.school_admin_service import school_admin_service
@@ -39,7 +35,6 @@ from app.services.school_assignment_service import school_assignment_service
 from app.services.school_class_service import school_class_service
 from app.services.school_service import SchoolService
 from app.services.subject_service import subject_service
-from app.services.term_service import term_service
 
 router = APIRouter(
     prefix="/school-admin",
@@ -99,7 +94,7 @@ async def create_subject(
 @router.get("/subjects")
 async def get_subjects(
     db: DBSession,
-    user: RequireSchoolAdmin,
+    user: CurrentUser,
 ):
     return await subject_service.get_school_subjects(
         db,
@@ -160,95 +155,8 @@ async def remove_subject_from_class(
 
 
 # =====================================================
-# 📅 ACADEMIC SESSION
-# =====================================================
-@router.post("/sessions")
-async def create_session(
-    payload: AcademicSessionCreate,
-    db: DBSession,
-    user: RequireSchoolAdmin,
-):
-    return await academic_session_service.create_session(
-        db,
-        payload,
-        user.school_id,
-    )
-
-
-@router.get("/sessions")
-async def get_sessions(db: DBSession, user: RequireSchoolAdmin):
-    return await academic_session_service.get_sessions(
-        db,
-        user.school_id,
-    )
-
-
-@router.post(
-    "/sessions/{session_id}/activate",
-)
-async def activate_session(
-    session_id: str,
-    db: DBSession,
-    current_user: RequireSchoolAdmin,
-):
-    return await academic_session_service.activate_session(
-        db=db,
-        session_id=session_id,
-        school_id=current_user.school_id,
-    )
-
-
-@router.post(
-    "/terms/{term_id}/activate",
-)
-async def activate_term(
-    term_id: UUID,
-    db: DBSession,
-    current_user: RequireSchoolAdmin,
-):
-    return await term_service.activate_term(
-        db=db,
-        term_id=term_id,
-        school_id=current_user.school_id,
-    )
-
-
-# =====================================================
-# 📆 TERMS
-# =====================================================
-@router.post("/terms")
-async def create_term(
-    payload: TermCreate,
-    db: DBSession,
-    user: RequireSchoolAdmin,
-):
-    return await term_service.create_term(db, payload, user.school_id)
-
-
-@router.get("/terms")
-async def get_terms(db: DBSession, user: RequireSchoolAdmin):
-    return await term_service.get_terms(db, user.school_id)
-
-
-# =====================================================
 # 📊 LESSONS (LMS CORE)
 # =====================================================
-@router.get("/lessons/search")
-async def get_lessons(
-    db: DBSession,
-    _: RequireSchoolAdmin,
-    class_name: str,
-    subject_name: str,
-    session_name: str,
-    term_name: str,
-):
-    return await lesson_service.get_lessons_filtered(
-        db,
-        class_name=class_name,
-        subject_name=subject_name,
-        session_name=session_name,
-        term_name=term_name,
-    )
 
 
 # =====================================================
@@ -498,7 +406,7 @@ async def create_class(
 @router.get("/classes")
 async def get_classes(
     db: DBSession,
-    user: RequireSchoolAdmin,
+    user: CurrentUser,
 ):
     return await school_class_service.get_classes(
         db,

@@ -1,15 +1,15 @@
 from uuid import UUID
 
 from sqlalchemy import delete, select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.class_subject import ClassSubject
 from app.models.classes import Class
 from app.models.subject import Subject
 
-class SubjectRepository:
 
+class SubjectRepository:
     async def create(
         self,
         db: AsyncSession,
@@ -73,7 +73,6 @@ class SubjectRepository:
 
         return assignment
 
-
     async def get_class_subjects(
         self,
         db: AsyncSession,
@@ -115,13 +114,13 @@ class SubjectRepository:
         )
 
         return result.scalar_one_or_none()
-    
+
     async def get_school_subject(
-    self,
-    db: AsyncSession,
-    subject_id: UUID,
-    school_id: UUID,
-):
+        self,
+        db: AsyncSession,
+        subject_id: UUID,
+        school_id: UUID,
+    ):
         result = await db.execute(
             select(Subject).where(
                 Subject.id == subject_id,
@@ -166,5 +165,6 @@ class SubjectRepository:
         )
 
         return result.scalar_one_or_none()
-    
+
+
 subject_repository = SubjectRepository()

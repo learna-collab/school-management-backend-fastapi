@@ -25,7 +25,6 @@ from app.services.attendance_service import attendance_service
 from app.services.dashboard_services import (
     dashboard_service,
 )
-from app.services.lesson_service import lesson_service
 from app.services.result_service import result_service
 from app.services.teacher_service import teacher_service
 
@@ -38,24 +37,6 @@ router = APIRouter(
 # =====================================================
 # LESSONS
 # =====================================================
-
-
-@router.get("/lessons/search")
-async def search_lessons(
-    class_name: str,
-    subject_name: str,
-    session_name: str,
-    term_name: str,
-    db: DBSession,
-    _: RequireTeacher,
-):
-    return await lesson_service.get_lessons_filtered(
-        db=db,
-        class_name=class_name,
-        subject_name=subject_name,
-        session_name=session_name,
-        term_name=term_name,
-    )
 
 
 # =====================================================

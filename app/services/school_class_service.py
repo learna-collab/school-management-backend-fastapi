@@ -3,17 +3,15 @@ from uuid import UUID
 from fastapi import HTTPException, status
 
 from app.models.classes import Class
-from app.repositories.academic_session_repository import academic_session_repo
+from app.repositories.dashboard_repository import DashboardRepository
 from app.repositories.school_class_repository import school_class_repository
-from app.repositories.term_repository import term_repo
 from app.schemas.teacher_assignmet import CreateClassRequest
 
 
 class SchoolClassService:
     def __init__(self):
         self.repo = school_class_repository
-        self.session_repo = academic_session_repo
-        self.term_repo = term_repo
+        self.session_repo = DashboardRepository()
 
     # ==========================================================
     # CREATE CLASS
@@ -80,9 +78,9 @@ class SchoolClassService:
 
     async def get_class_dashboard(self, db, class_id: UUID, school_id):
         print("school_id=========================", school_id)
-        active_session = await self.session_repo.get_active(db, school_id)
+        active_session = await self.session_repo.get_active_session(db, school_id)
 
-        active_term = await self.term_repo.get_active(db, school_id)
+        active_term = await self.session_repo.get_active_term(db, school_id)
 
         if not active_session or not active_term:
             dashboard = await self.repo.get_class_basic_info(
