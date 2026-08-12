@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.lesson import Lesson
 from app.models.lesson_alf import LessonALF
+from app.models.subject_template import SubjectTemplate
 from app.repositories.lesson_repository import LessonRepository
 from app.services.cloudinary_service import cloudinary_service
 from app.services.lesson_parser import LessonParser
@@ -30,7 +31,22 @@ class LessonService:
         lesson_day: str,
         file: UploadFile,
     ):
-        suffix = Path(file.filename).suffix
+        # keep original extension (.pdf, .docx, etc.)
+        suffix = Path(file.filename).suffix.lower()
+        day_map = {
+            "Day 1": "Monday",
+            "Day 2": "Tuesday",
+            "Day 3": "Wednesday",
+            "Day 4": "Thursday",
+            "Day 5": "Friday",
+        }
+
+        day_name = day_map.get(lesson_day, lesson_day)
+
+        # Get subject name from database
+        subject = await db.get(SubjectTemplate, subject_template_id)
+
+        subject_name = subject.name.replace(" ", "-") if subject else "Subject"
 
         contents = await file.read()
 
@@ -39,11 +55,8 @@ class LessonService:
             contents=contents,
             filename=file.filename,
             folder="lessons/daily",
-            public_id=(
-                f"{class_template_id}-{subject_template_id}-"
-                f"{session_id}-{term_id}-{week_number}-{lesson_day}"
-            ),
-            resource_type="auto",
+            public_id=f"Week-{week_number}-{day_name}-{subject_name}{suffix}",
+            resource_type="raw",  # important for pdf/docx
         )
 
         # Save temporarily for parsing
@@ -79,7 +92,6 @@ class LessonService:
 
         lesson = await self.repository.create(db, lesson)
 
-        # Create ALF sections
         alf = LessonALF(
             lesson_id=lesson.id,
             independent_reading=parsed.alf.independent_reading,
@@ -93,11 +105,7 @@ class LessonService:
 
         await db.commit()
 
-        # Reload with relationships eagerly loaded
-        lesson = await self.repository.get_by_id(
-            db,
-            lesson.id,
-        )
+        lesson = await self.repository.get_by_id(db, lesson.id)
 
         return lesson
 
@@ -150,3 +158,13 @@ class LessonService:
             raise HTTPException(status_code=404, detail="Lesson not found")
 
         await self.repository.delete(db, lesson_id)
+
+    async def get_class_subjects(
+        self,
+        db: AsyncSession,
+        class_template_id: UUID,
+    ):
+        return await self.repository.get_subjects_by_class_template(
+            db,
+            class_template_id,
+        )

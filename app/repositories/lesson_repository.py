@@ -10,6 +10,8 @@ from app.models.classes import Class
 from app.models.lesson import Lesson
 from app.models.lesson_alf import LessonALF
 from app.models.subject import Subject
+from app.models.subject_template import SubjectTemplate
+from app.models.template_class_subject import TemplateClassSubject
 from app.models.terms import Term
 
 
@@ -365,3 +367,31 @@ class LessonRepository:
         terms = result.scalars().all()
 
         return [{"id": str(item.id), "name": item.name} for item in terms]
+
+    async def get_subjects_by_class_template(
+        self,
+        db: AsyncSession,
+        class_template_id: UUID,
+    ):
+        result = await db.execute(
+            select(SubjectTemplate)
+            .join(
+                TemplateClassSubject,
+                TemplateClassSubject.subject_template_id == SubjectTemplate.id,
+            )
+            .where(
+                TemplateClassSubject.class_template_id == class_template_id,
+                SubjectTemplate.is_active.is_(True),
+            )
+            .order_by(SubjectTemplate.name.asc())
+        )
+
+        subjects = result.scalars().all()
+
+        return [
+            {
+                "id": str(item.id),
+                "name": item.name,
+            }
+            for item in subjects
+        ]

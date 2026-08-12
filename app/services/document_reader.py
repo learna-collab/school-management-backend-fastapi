@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import docx
 import fitz
+import mammoth
 
 
 class DocumentReader:
@@ -16,48 +16,16 @@ class DocumentReader:
 
         raise ValueError("Unsupported document type")
 
-    # -------------------------------------------------
-    # DOCX READER
-    # Reads BOTH paragraphs and tables
-    # -------------------------------------------------
-
+    # DOCX → HTML (preserves headings, lists, tables, bold, etc.)
     def read_docx(self, path: str) -> str:
-        document = docx.Document(path)
+        with open(path, "rb") as docx_file:
+            result = mammoth.convert_to_html(docx_file)
 
-        parts = []
+        return result.value
 
-        # Normal paragraphs
-        for paragraph in document.paragraphs:
-            text = paragraph.text.strip()
-
-            if text:
-                parts.append(text)
-
-        # Tables
-        for table in document.tables:
-            for row in table.rows:
-                cells = []
-
-                for cell in row.cells:
-                    cell_text = " ".join(
-                        p.text.strip() for p in cell.paragraphs if p.text.strip()
-                    )
-
-                    if cell_text:
-                        cells.append(cell_text)
-
-                if cells:
-                    parts.append(" | ".join(cells))
-
-        return "\n".join(parts)
-
-    # -------------------------------------------------
-    # PDF READER
-    # -------------------------------------------------
-
+    # PDF → plain text fallback
     def read_pdf(self, path: str) -> str:
         document = fitz.open(path)
-
         text = ""
 
         for page in document:

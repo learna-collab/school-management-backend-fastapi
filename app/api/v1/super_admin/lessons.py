@@ -137,3 +137,15 @@ async def delete_lesson(
     await service.delete(db, lesson_id)
 
     return {"message": "Lesson deleted successfully"}
+
+
+@router.get(
+    "/classes/{class_template_id}/subjects",
+    response_model=list[SimpleSubjectResponse],
+)
+async def get_class_subjects(
+    class_template_id: UUID,
+    db: DBSession,
+    _: RequireSuperAdmin,
+):
+    return await service.get_class_subjects(db, class_template_id)

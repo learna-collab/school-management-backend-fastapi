@@ -702,5 +702,36 @@ class ResultRepository:
 
         return result.scalars().all()
 
+    async def get_class_results(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+        class_id: UUID,
+        session_id: UUID,
+        term_id: UUID,
+    ):
+        result = await db.execute(
+            select(ResultRecord)
+            .join(ResultBatch, ResultRecord.batch_id == ResultBatch.id)
+            .options(
+                selectinload(ResultRecord.student),
+                selectinload(ResultRecord.subject),
+            )
+            .where(
+                and_(
+                    ResultBatch.school_id == school_id,
+                    ResultBatch.class_id == class_id,
+                    ResultBatch.session_id == session_id,
+                    ResultBatch.term_id == term_id,
+                )
+            )
+            .order_by(
+                ResultRecord.student_id,
+                ResultRecord.subject_id,
+            )
+        )
+
+        return list(result.scalars().all())
+
 
 result_repository = ResultRepository()

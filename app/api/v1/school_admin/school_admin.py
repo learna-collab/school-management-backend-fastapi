@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser, DBSession, RequireSchoolAdmin
 from app.db.database import get_db
-from app.schemas.academic_session import AcademicSessionCreate
 from app.schemas.attendance import AttendanceAnalyticsResponse
 from app.schemas.result_responses import (
     ApprovalHistoryItem,
@@ -162,6 +161,25 @@ async def remove_subject_from_class(
 # =====================================================
 # RESULTS
 # =====================================================
+@router.get("/results/export")
+async def export_results(
+    session_id: UUID,
+    term_id: UUID,
+    class_id: UUID,
+    db: DBSession,
+    user: RequireSchoolAdmin,
+):
+    print("school_id:", user.school_id)
+    print(type(user.school_id))
+    return await school_admin_service.export_results(
+        db,
+        user.school_id,
+        session_id,
+        term_id,
+        class_id,
+    )
+
+
 @router.get(
     "/results/class",
     response_model=ClassResultResponse,
@@ -759,23 +777,6 @@ async def delete_subject(
         db,
         user.school_id,
         subject_id,
-    )
-
-
-@router.get("/results/export")
-async def export_results(
-    session_id: UUID,
-    term_id: UUID,
-    class_id: UUID,
-    db: DBSession,
-    user: RequireSchoolAdmin,
-):
-    return await school_admin_service.export_results(
-        db,
-        user.school_id,
-        session_id,
-        term_id,
-        class_id,
     )
 
 

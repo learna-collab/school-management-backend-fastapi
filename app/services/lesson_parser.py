@@ -18,7 +18,8 @@ class LessonParser:
     ) -> ParsedLesson:
         raw_text = self.reader.read(file_path)
 
-        text = raw_text.replace("\r", "")
+        # Keep HTML intact
+        text = raw_text
 
         # -------------------------------------------------
         # EXTRACT TABLE VALUES
@@ -40,7 +41,7 @@ class LessonParser:
             title = topic or "Untitled Lesson"
 
         # -------------------------------------------------
-        # TEACHER NOTES (KEY POINTS ONLY)
+        # TEACHER NOTES
         # -------------------------------------------------
         teacher_notes = self._extract_between(
             text,
@@ -48,11 +49,8 @@ class LessonParser:
             "CLASS ACTIVITY",
         )
 
-        if teacher_notes:
-            teacher_notes = teacher_notes.strip()
-
         # -------------------------------------------------
-        # COMPREHENSIVE NOTE
+        # MINI LESSON / COMPREHENSIVE NOTE
         # -------------------------------------------------
         comprehensive_note = self._extract_between(
             text,
@@ -62,15 +60,27 @@ class LessonParser:
 
         # -------------------------------------------------
         # CASE STUDY
+        # Everything from CASE STUDY until EVALUATION
         # -------------------------------------------------
         case_study = self._extract_between(
             text,
             "CASE STUDY",
-            "Reflective Questions",
+            "EVALUATION",
         )
+
+        # Remove any leaked content before the CASE STUDY heading
+        if case_study:
+            match = re.search(
+                r"((?:<h[1-6][^>]*>\s*)?CASE STUDY.*)",
+                case_study,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if match:
+                case_study = match.group(1).strip()
 
         # -------------------------------------------------
         # EVALUATION
+        # Only the evaluation section
         # -------------------------------------------------
         evaluation = self._extract_between(
             text,
@@ -78,8 +88,17 @@ class LessonParser:
             "COMPREHENSIVE TEACHER’S NOTE",
         )
 
+        if not evaluation:
+            evaluation = self._extract_between(
+                text,
+                "EVALUATION",
+                None,
+            )
+
         # -------------------------------------------------
-        # CLASS ACTIVITY
+        # PROJECT BASED LEARNING / CLASS ACTIVITY
+        # Only the CLASS ACTIVITY section
+        # Exclude the table beginning with "Item | Details"
         # -------------------------------------------------
         project_based_learning = self._extract_between(
             text,
@@ -87,10 +106,27 @@ class LessonParser:
             "Item | Details",
         )
 
+        # Fallback if table heading is not present
+        if not project_based_learning:
+            project_based_learning = self._extract_between(
+                text,
+                "CLASS ACTIVITY",
+                "CASE STUDY",
+            )
+
+        # Final fallback
+        if not project_based_learning:
+            project_based_learning = self._extract_between(
+                text,
+                "CLASS ACTIVITY",
+                None,
+            )
+
         # -------------------------------------------------
         # INDEPENDENT READING
+        # Preserve full formatted HTML document
         # -------------------------------------------------
-        independent_reading = text.strip()
+        independent_reading = raw_text.strip()
 
         # -------------------------------------------------
         # BUILD ALF
@@ -115,21 +151,47 @@ class LessonParser:
 
     # =====================================================
     # TABLE VALUE EXTRACTOR
-    # Example:
-    # Subject | Digital Literacy
     # =====================================================
 
     def _extract_table_value(self, text: str, label: str):
-        pattern = rf"{re.escape(label)}\s*\|\s*(.+)"
+        """
+        Extract values from Mammoth-generated HTML tables.
 
-        match = re.search(pattern, text, re.IGNORECASE)
+        Handles nested tags such as:
+        <tr>
+            <td><p>Subject</p></td>
+            <td><p>Digital Literacy</p></td>
+        </tr>
+        """
+        pattern = (
+            rf"<tr[^>]*>\s*"
+            rf"<t[dh][^>]*>.*?{re.escape(label)}.*?</t[dh]>\s*"
+            rf"<t[dh][^>]*>(.*?)</t[dh]>\s*"
+            rf"</tr>"
+        )
+
+        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
 
         if not match:
             return None
 
-        value = match.group(1).strip()
+        value = match.group(1)
 
-        return re.sub(r"\s+", " ", value)
+        # Remove all HTML tags inside the cell
+        value = re.sub(r"<[^>]+>", " ", value)
+
+        # Decode common HTML entities
+        value = (
+            value.replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+        )
+
+        # Normalize whitespace
+        value = re.sub(r"\s+", " ", value).strip()
+
+        return value or None
 
     # =====================================================
     # GENERIC SECTION EXTRACTOR
@@ -141,19 +203,23 @@ class LessonParser:
         start: str,
         end: str | None,
     ):
-        # Normalize smart apostrophes for matching
         normalized = text.replace("’", "'")
 
         start = start.replace("’", "'")
         end = end.replace("’", "'") if end else None
 
+        # Match HTML headings OR plain text headings
+        start_pattern = (
+            rf"(?:<h[1-6][^>]*>\s*{re.escape(start)}\s*</h[1-6]>|{re.escape(start)})"
+        )
+
         if end:
-            pattern = (
-                rf"{re.escape(start)}\s*"
-                rf"(.*?)(?={re.escape(end)})"
+            end_pattern = (
+                rf"(?:<h[1-6][^>]*>\s*{re.escape(end)}\s*</h[1-6]>|{re.escape(end)})"
             )
+            pattern = rf"{start_pattern}\s*(.*?)(?={end_pattern})"
         else:
-            pattern = rf"{re.escape(start)}\s*(.*)$"
+            pattern = rf"{start_pattern}\s*(.*)$"
 
         match = re.search(
             pattern,
@@ -166,7 +232,4 @@ class LessonParser:
 
         value = match.group(1).strip()
 
-        # Keep line breaks instead of collapsing everything
-        value = re.sub(r"\n\s*", "\n", value)
-
-        return value.strip()
+        return value

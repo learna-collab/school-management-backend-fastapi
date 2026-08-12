@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Text
+from sqlalchemy import Column, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -15,10 +15,18 @@ class LessonALF(Base, UUIDMixin):
         unique=True,
     )
 
+    # Content sections
     independent_reading = Column(Text)
     mini_lesson = Column(Text)
     case_study = Column(Text)
     project_based_learning = Column(Text)
     evaluation = Column(Text)
+
+    # Duration in minutes for guided lesson mode
+    independent_reading_duration = Column(Integer, default=7)
+    mini_lesson_duration = Column(Integer, default=7)
+    case_study_duration = Column(Integer, default=7)
+    project_based_learning_duration = Column(Integer, default=17)
+    evaluation_duration = Column(Integer, default=2)
 
     lesson = relationship("Lesson", back_populates="alf")

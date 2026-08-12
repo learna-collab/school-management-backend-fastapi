@@ -7,6 +7,7 @@ from . import (
     auth,
     blog,
     cbt,
+    cbt_batch_upload,
     class_setup_router,
     profile,
     students,
@@ -38,3 +39,4 @@ api_router.include_router(blog.router)
 api_router.include_router(admin_registration.router)
 api_router.include_router(class_setup_router.router)
 api_router.include_router(cbt.router)
+api_router.include_router(cbt_batch_upload.router)
