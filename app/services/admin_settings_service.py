@@ -73,10 +73,7 @@ class AdminSettingsService:
         user_id: UUID,
         payload: ChangePasswordRequest,
     ):
-        user = await self.repository.get_user(
-            db,
-            user_id,
-        )
+        user = await self.repository.get_user(db, user_id)
 
         if not user:
             raise HTTPException(
@@ -84,43 +81,39 @@ class AdminSettingsService:
                 detail="User not found.",
             )
 
-        current_hash = user.password_hash or (
-            user.credential.password if user.credential else None
-        )
+        # Always verify against hashed password in users table
+        current_hash = user.password_hash
 
-        if current_hash is None:
+        if not current_hash:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Password not configured.",
             )
 
-        if not verify_password(
-            payload.current_password,
-            current_hash,
-        ):
+        if not verify_password(payload.current_password, current_hash):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Current password is incorrect.",
             )
 
-        if verify_password(
-            payload.new_password,
-            current_hash,
-        ):
+        if verify_password(payload.new_password, current_hash):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="New password must be different from the current password.",
             )
 
-        new_hash = hash_password(
-            payload.new_password,
-        )
+        # Hash for users table
+        new_hash = hash_password(payload.new_password)
 
-        await self.repository.update_user_password(
-            db=db,
-            user=user,
-            password_hash=new_hash,
-        )
+        # Update hashed password in users table
+        user.password_hash = new_hash
+
+        # Update plain password in user_credentials table
+        if user.credential:
+            user.credential.password = payload.new_password
+
+        await db.commit()
+        await db.refresh(user)
 
         return {"message": "Password updated successfully."}
 
