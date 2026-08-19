@@ -67,13 +67,27 @@ class RegistrationService:
     ) -> str:
         prefix = self.generate_school_prefix(school.name)
 
-        total_users = await db.scalar(
-            select(func.count(User.id)).where(
+        result = await db.execute(
+            select(User.username)
+            .where(
                 User.school_id == school.id,
+                User.username.like(f"{prefix}-%"),
             )
+            .order_by(User.username.desc())
+            .limit(1)
         )
 
-        next_number = (total_users or 0) + 1
+        last_username = result.scalar_one_or_none()
+
+        if last_username:
+            match = re.search(r"-(\d+)$", last_username)
+
+            if match:
+                next_number = int(match.group(1)) + 1
+            else:
+                next_number = 1
+        else:
+            next_number = 1
 
         return f"{prefix}-{next_number:06d}"
 
