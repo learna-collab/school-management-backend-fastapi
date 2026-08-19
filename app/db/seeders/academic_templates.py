@@ -12,14 +12,30 @@ from app.models.template_class_subject import TemplateClassSubject
 
 ACADEMIC_TEMPLATES = [
     {
-        "name": "Nigerian Basic Education",
-        "description": "NERDC Curriculum",
-    }
+        "name": "Nursery & Primary",
+        "description": "Nursery and primary school academic structure.",
+        "levels": ["NURSERY", "PRIMARY"],
+    },
+    {
+        "name": "Secondary",
+        "description": "Junior and senior secondary school academic structure.",
+        "levels": ["SECONDARY"],
+    },
+    {
+        "name": "Primary",
+        "description": "Primary school academic structure.",
+        "levels": ["PRIMARY"],
+    },
+    {
+        "name": "Nursery, Primary & Secondary",
+        "description": "Complete nursery, primary, junior secondary and senior secondary structure.",
+        "levels": ["NURSERY", "PRIMARY", "SECONDARY"],
+    },
 ]
 
 
 # ============================================================
-# CLASS TEMPLATES
+# CLASS DEFINITIONS
 # ============================================================
 
 CLASS_TEMPLATES = [
@@ -98,11 +114,6 @@ async def get_or_create_template(
     name: str,
     description: str | None,
 ) -> AcademicTemplate:
-    """
-    Returns an existing academic template
-    or creates a new one.
-    """
-
     result = await db.execute(
         select(AcademicTemplate).where(AcademicTemplate.name == name)
     )
@@ -124,7 +135,7 @@ async def get_or_create_template(
     return template
 
 
-async def create_class(
+async def get_or_create_class(
     db: AsyncSession,
     *,
     template: AcademicTemplate,
@@ -132,46 +143,62 @@ async def create_class(
     level: str,
     sort_order: int,
 ) -> ClassTemplate:
-    """
-    Creates one class template.
-    """
+    result = await db.execute(
+        select(ClassTemplate).where(
+            ClassTemplate.academic_template_id == template.id,
+            ClassTemplate.name == name,
+        )
+    )
 
-    item = ClassTemplate(
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        return existing
+
+    school_class = ClassTemplate(
         academic_template_id=template.id,
         name=name,
         level=level,
         sort_order=sort_order,
     )
 
-    db.add(item)
+    db.add(school_class)
 
     await db.flush()
 
-    return item
+    return school_class
 
 
-async def create_subject(
+async def get_or_create_subject(
     db: AsyncSession,
     *,
     template: AcademicTemplate,
     name: str,
     level: str,
 ) -> SubjectTemplate:
-    """
-    Creates one subject template.
-    """
+    result = await db.execute(
+        select(SubjectTemplate).where(
+            SubjectTemplate.academic_template_id == template.id,
+            SubjectTemplate.name == name,
+        )
+    )
 
-    item = SubjectTemplate(
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        return existing
+
+    subject = SubjectTemplate(
         academic_template_id=template.id,
         name=name,
         level=level,
     )
 
-    db.add(item)
+    db.add(subject)
 
     await db.flush()
 
-    return item
+    return subject
 
 
 async def map_subject(
@@ -180,9 +207,17 @@ async def map_subject(
     school_class: ClassTemplate,
     subject: SubjectTemplate,
 ):
-    """
-    Creates a class-subject mapping.
-    """
+    result = await db.execute(
+        select(TemplateClassSubject).where(
+            TemplateClassSubject.class_template_id == school_class.id,
+            TemplateClassSubject.subject_template_id == subject.id,
+        )
+    )
+
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        return
 
     mapping = TemplateClassSubject(
         class_template_id=school_class.id,
@@ -200,195 +235,128 @@ async def map_subject(
 async def seed_academic_templates(
     db: AsyncSession,
 ):
-    """
-    Seeds the default academic template together
-    with all class templates, subject templates,
-    and class-subject mappings.
+    # ========================================================
+    # CREATE ALL FOUR TEMPLATES
+    # ========================================================
 
-    Safe to run multiple times.
-    """
+    templates: dict[str, AcademicTemplate] = {}
 
-    # -----------------------------------------
-    # Check if template already exists
-    # -----------------------------------------
-
-    result = await db.execute(
-        select(AcademicTemplate).where(
-            AcademicTemplate.name == "Nigerian Basic Education"
-        )
-    )
-
-    existing = result.scalar_one_or_none()
-
-    if existing:
-        print("✓ Academic template already seeded.")
-        return
-
-    # -----------------------------------------
-    # Create Template
-    # -----------------------------------------
-
-    template = await get_or_create_template(
-        db,
-        name="Nigerian Basic Education",
-        description="NERDC Curriculum",
-    )
-
-    # -----------------------------------------
-    # Dictionaries
-    # -----------------------------------------
-
-    class_lookup: dict[str, ClassTemplate] = {}
-
-    nursery_subject_lookup: dict[str, SubjectTemplate] = {}
-
-    primary_subject_lookup: dict[str, SubjectTemplate] = {}
-
-    secondary_subject_lookup: dict[str, SubjectTemplate] = {}
-
-    # -----------------------------------------
-    # Create Classes
-    # -----------------------------------------
-
-    for index, (name, level) in enumerate(
-        CLASS_TEMPLATES,
-        start=1,
-    ):
-        school_class = await create_class(
-            db=db,
-            template=template,
-            name=name,
-            level=level,
-            sort_order=index,
+    for definition in ACADEMIC_TEMPLATES:
+        template = await get_or_create_template(
+            db,
+            name=definition["name"],
+            description=definition["description"],
         )
 
-        class_lookup[name] = school_class
+        templates[definition["name"]] = template
 
-    # -----------------------------------------
-    # Nursery Subjects
-    # -----------------------------------------
+    # ========================================================
+    # CREATE CLASSES FOR EACH TEMPLATE
+    # ========================================================
 
-    for subject_name in NURSERY_SUBJECTS:
-        subject = await create_subject(
-            db=db,
-            template=template,
-            name=subject_name,
-            level="NURSERY",
-        )
+    for definition in ACADEMIC_TEMPLATES:
+        template = templates[definition["name"]]
 
-        nursery_subject_lookup[subject_name] = subject
+        sort_order = 1
 
-    # -----------------------------------------
-    # Primary Subjects
-    # -----------------------------------------
+        for class_name, level in CLASS_TEMPLATES:
+            if level not in definition["levels"]:
+                continue
 
-    for subject_name in PRIMARY_SUBJECTS:
-        subject = await create_subject(
-            db=db,
-            template=template,
-            name=subject_name,
-            level="PRIMARY",
-        )
-
-        primary_subject_lookup[subject_name] = subject
-
-    # -----------------------------------------
-    # Secondary Subjects
-    # -----------------------------------------
-
-    for subject_name in SECONDARY_SUBJECTS:
-        subject = await create_subject(
-            db=db,
-            template=template,
-            name=subject_name,
-            level="SECONDARY",
-        )
-
-        secondary_subject_lookup[subject_name] = subject
-
-    # =====================================================
-    # PART 3 CONTINUES HERE...
-    # =====================================================
-    # =====================================================
-    # MAP NURSERY SUBJECTS
-    # =====================================================
-
-    nursery_classes = [
-        "Nursery 1",
-        "Nursery 2",
-        "Nursery 3",
-    ]
-
-    for class_name in nursery_classes:
-        school_class = class_lookup[class_name]
-
-        for subject in nursery_subject_lookup.values():
-            await map_subject(
-                db=db,
-                school_class=school_class,
-                subject=subject,
+            await get_or_create_class(
+                db,
+                template=template,
+                name=class_name,
+                level=level,
+                sort_order=sort_order,
             )
 
-    # =====================================================
-    # MAP PRIMARY SUBJECTS
-    # =====================================================
+            sort_order += 1
 
-    primary_classes = [
-        "Primary 1",
-        "Primary 2",
-        "Primary 3",
-        "Primary 4",
-        "Primary 5",
-        "Primary 6",
-    ]
+    # ========================================================
+    # CREATE SUBJECTS FOR EACH TEMPLATE
+    # ========================================================
 
-    for class_name in primary_classes:
-        school_class = class_lookup[class_name]
+    subject_definitions = {
+        "NURSERY": NURSERY_SUBJECTS,
+        "PRIMARY": PRIMARY_SUBJECTS,
+        "SECONDARY": SECONDARY_SUBJECTS,
+    }
 
-        for subject in primary_subject_lookup.values():
-            await map_subject(
-                db=db,
-                school_class=school_class,
-                subject=subject,
+    for definition in ACADEMIC_TEMPLATES:
+        template = templates[definition["name"]]
+
+        for level in definition["levels"]:
+            for subject_name in subject_definitions[level]:
+                await get_or_create_subject(
+                    db,
+                    template=template,
+                    name=subject_name,
+                    level=level,
+                )
+
+    # ========================================================
+    # MAP CLASSES TO SUBJECTS
+    # ========================================================
+
+    for definition in ACADEMIC_TEMPLATES:
+        template = templates[definition["name"]]
+
+        # Get classes belonging to this template
+        class_result = await db.execute(
+            select(ClassTemplate).where(
+                ClassTemplate.academic_template_id == template.id
+            )
+        )
+
+        classes = class_result.scalars().all()
+
+        # Get subjects belonging to this template
+        subject_result = await db.execute(
+            select(SubjectTemplate).where(
+                SubjectTemplate.academic_template_id == template.id
+            )
+        )
+
+        subjects = subject_result.scalars().all()
+
+        # Group subjects by level
+        subjects_by_level: dict[str, list[SubjectTemplate]] = {
+            "NURSERY": [],
+            "PRIMARY": [],
+            "SECONDARY": [],
+        }
+
+        for subject in subjects:
+            subjects_by_level[subject.level].append(subject)
+
+        # Map subjects to their corresponding classes
+        for school_class in classes:
+            class_subjects = subjects_by_level.get(
+                school_class.level,
+                [],
             )
 
-    # =====================================================
-    # MAP SECONDARY SUBJECTS
-    # =====================================================
+            for subject in class_subjects:
+                await map_subject(
+                    db,
+                    school_class=school_class,
+                    subject=subject,
+                )
 
-    secondary_classes = [
-        "JSS1",
-        "JSS2",
-        "JSS3",
-        "SS1",
-        "SS2",
-        "SS3",
-    ]
-
-    for class_name in secondary_classes:
-        school_class = class_lookup[class_name]
-
-        for subject in secondary_subject_lookup.values():
-            await map_subject(
-                db=db,
-                school_class=school_class,
-                subject=subject,
-            )
-
-    # =====================================================
+    # ========================================================
     # COMMIT
-    # =====================================================
+    # ========================================================
 
     await db.commit()
 
     print("=" * 60)
     print("Academic templates seeded successfully.")
-    print(f"Template : {template.name}")
-    print(f"Classes  : {len(class_lookup)}")
-    print(
-        "Subjects :",
-        len(nursery_subject_lookup)
-        + len(primary_subject_lookup)
-        + len(secondary_subject_lookup),
-    )
+    print("=" * 60)
+
+    for definition in ACADEMIC_TEMPLATES:
+        template = templates[definition["name"]]
+
+        print(f"✓ {template.name}: {', '.join(definition['levels'])}")
+
     print("=" * 60)

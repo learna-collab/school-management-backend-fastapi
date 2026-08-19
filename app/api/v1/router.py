@@ -13,15 +13,23 @@ from . import (
     students,
     user,
 )
+from .admin_directory import router as admin_directory_router
+from .directory_school import router as directory_school_router
+from .locations import router as locations_router
 from .school_admin import academic_period, school_admin
 from .school_admin import lessons as school_admin_lessons
+from .school_admin_directory import router as school_admin_directory_router
 from .super_admin import academic as super_admin_academic
 from .super_admin import lessons as super_admin_lessons
 from .teacher import lessons as teacher_lessons
 from .teacher import teacher
 
 api_router = APIRouter()
+api_router.include_router(locations_router)
+api_router.include_router(school_admin_directory_router)
+api_router.include_router(admin_directory_router)
 api_router.include_router(super_admin_lessons.router)
+api_router.include_router(directory_school_router)
 api_router.include_router(super_admin_academic.router)
 api_router.include_router(academic_period.router)
 api_router.include_router(school_admin_lessons.router)
