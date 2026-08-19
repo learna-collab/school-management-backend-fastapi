@@ -22,12 +22,12 @@ class LessonParser:
         text = raw_text
 
         # -------------------------------------------------
-        # EXTRACT BASIC FIELDS (TABLE FORMAT OR LABEL FORMAT)
+        # EXTRACT TABLE VALUES
         # -------------------------------------------------
-        subject = self._extract_field(text, "Subject")
-        topic = self._extract_field(text, "Topic")
+        subject = self._extract_table_value(text, "Subject")
+        topic = self._extract_table_value(text, "Topic")
 
-        objectives = self._extract_field(
+        objectives = self._extract_table_value(
             text,
             "Performance Objectives",
         )
@@ -43,126 +43,90 @@ class LessonParser:
         # -------------------------------------------------
         # TEACHER NOTES
         # -------------------------------------------------
-        teacher_notes = self._extract_section(
+        teacher_notes = self._extract_between(
             text,
-            start_keywords=["Key Points"],
-            end_keywords=[
-                "CLASS ACTIVITY",
-                "Practical Classroom Activities",
-                "CASE STUDY",
-                "EVALUATION",
-            ],
+            "Key Points",
+            "CLASS ACTIVITY",
         )
 
         # -------------------------------------------------
         # MINI LESSON / COMPREHENSIVE NOTE
         # -------------------------------------------------
-
-        # First priority: extract the full COMPREHENSIVE TEACHER'S NOTE section
-        comprehensive_note = self._extract_section(
+        comprehensive_note = self._extract_between(
             text,
-            start_keywords=[
-                "COMPREHENSIVE TEACHER’S NOTE",
-                "COMPREHENSIVE TEACHER'S NOTE",
-                "COMPREHENSIVE NOTE",
-            ],
-            end_keywords=[],  # capture until the end of the document
+            "COMPREHENSIVE TEACHER’S NOTE",
+            "Key Points",
         )
-
-        # Fallback: instructional table format only if no comprehensive note exists
-        if not comprehensive_note:
-            comprehensive_note = self._extract_table_phase(
-                text, phase_name="Mini Lesson"
-            ) or self._extract_table_phase(text, phase_name="Mini-Lesson")
 
         # -------------------------------------------------
         # CASE STUDY
+        # Everything from CASE STUDY until EVALUATION
         # -------------------------------------------------
-
-        case_study = self._extract_heading_section(
+        case_study = self._extract_between(
             text,
-            heading="CASE STUDY",
-            end_keywords=[
-                "EVALUATION",
-                "COMPREHENSIVE TEACHER’S NOTE",
-                "COMPREHENSIVE TEACHER'S NOTE",
-                "Practical Classroom Activities",
-                "CLASS ACTIVITY",
-            ],
+            "CASE STUDY",
+            "EVALUATION",
         )
+
+        # Remove any leaked content before the CASE STUDY heading
+        if case_study:
+            match = re.search(
+                r"((?:<h[1-6][^>]*>\s*)?CASE STUDY.*)",
+                case_study,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if match:
+                case_study = match.group(1).strip()
 
         # -------------------------------------------------
         # EVALUATION
+        # Only the evaluation section
         # -------------------------------------------------
-        evaluation = self._extract_section(
+        evaluation = self._extract_between(
             text,
-            start_keywords=["EVALUATION"],
-            end_keywords=[
-                "COMPREHENSIVE TEACHER’S NOTE",
-                "COMPREHENSIVE TEACHER'S NOTE",
-                "MINI LESSON",
-            ],
+            "EVALUATION",
+            "COMPREHENSIVE TEACHER’S NOTE",
         )
 
         if not evaluation:
-            evaluation = self._extract_section(
+            evaluation = self._extract_between(
                 text,
-                start_keywords=["EVALUATION"],
-                end_keywords=[],
+                "EVALUATION",
+                None,
             )
 
         # -------------------------------------------------
         # PROJECT BASED LEARNING / CLASS ACTIVITY
+        # Only the CLASS ACTIVITY section
+        # Exclude the table beginning with "Item | Details"
         # -------------------------------------------------
-
-        # Preferred headings (Format 1)
-        project_based_learning = self._extract_section(
+        project_based_learning = self._extract_between(
             text,
-            start_keywords=[
-                "Practical Classroom Activities",
-                "CLASS ACTIVITY",
-            ],
-            end_keywords=[
-                "Item | Details",
-                "CASE STUDY",
-                "EVALUATION",
-                "COMPREHENSIVE TEACHER’S NOTE",
-                "COMPREHENSIVE TEACHER'S NOTE",
-            ],
+            "CLASS ACTIVITY",
+            "Item | Details",
         )
 
-        # Fallback headings (Format 1 variants)
+        # Fallback if table heading is not present
         if not project_based_learning:
-            project_based_learning = self._extract_section(
+            project_based_learning = self._extract_between(
                 text,
-                start_keywords=[
-                    "Practical Classroom Activities",
-                    "CLASS ACTIVITY",
-                ],
-                end_keywords=["CASE STUDY"],
+                "CLASS ACTIVITY",
+                "CASE STUDY",
             )
 
-        # Final heading fallback
+        # Final fallback
         if not project_based_learning:
-            project_based_learning = self._extract_section(
+            project_based_learning = self._extract_between(
                 text,
-                start_keywords=[
-                    "Practical Classroom Activities",
-                    "CLASS ACTIVITY",
-                ],
-                end_keywords=[],
+                "CLASS ACTIVITY",
+                None,
             )
 
-        # -------------------------------------------------
-        # DEFAULT TO TABLE EXTRACTION IF NO HEADING SECTION
-        # -------------------------------------------------
-        if not project_based_learning:
-            project_based_learning = self._extract_table_project_based_learning(text)
         # -------------------------------------------------
         # INDEPENDENT READING
         # Preserve full formatted HTML document
         # -------------------------------------------------
-        independent_reading = "Pupils should consult the school-approved textbook and read the relevant topic for further understanding."
+        independent_reading = raw_text.strip()
 
         # -------------------------------------------------
         # BUILD ALF
@@ -186,52 +150,19 @@ class LessonParser:
         )
 
     # =====================================================
-    # UNIVERSAL FIELD EXTRACTOR
-    # =====================================================
-
-    def _extract_field(self, text: str, label: str):
-        # Try table extraction first
-        value = self._extract_table_value(text, label)
-        if value:
-            return value
-
-        normalized = text.replace("’", "'")
-        label_normalized = label.replace("’", "'")
-
-        pattern = (
-            rf"{re.escape(label_normalized)}\s*[:\-]\s*(.+?)"
-            rf"(?=<br|</p>|</div>|\n|<h[1-6]|$)"
-        )
-
-        match = re.search(
-            pattern,
-            normalized,
-            re.IGNORECASE | re.DOTALL,
-        )
-
-        if not match:
-            return None
-
-        value = match.group(1)
-
-        value = re.sub(r"<[^>]+>", " ", value)
-
-        value = (
-            value.replace("&nbsp;", " ")
-            .replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-        )
-
-        value = re.sub(r"\s+", " ", value).strip()
-
-        return value or None
-
-    # =====================================================
     # TABLE VALUE EXTRACTOR
     # =====================================================
 
     def _extract_table_value(self, text: str, label: str):
+        """
+        Extract values from Mammoth-generated HTML tables.
+
+        Handles nested tags such as:
+        <tr>
+            <td><p>Subject</p></td>
+            <td><p>Digital Literacy</p></td>
+        </tr>
+        """
         pattern = (
             rf"<tr[^>]*>\s*"
             rf"<t[dh][^>]*>.*?{re.escape(label)}.*?</t[dh]>\s*"
@@ -246,8 +177,10 @@ class LessonParser:
 
         value = match.group(1)
 
+        # Remove all HTML tags inside the cell
         value = re.sub(r"<[^>]+>", " ", value)
 
+        # Decode common HTML entities
         value = (
             value.replace("&nbsp;", " ")
             .replace("&amp;", "&")
@@ -255,133 +188,38 @@ class LessonParser:
             .replace("&gt;", ">")
         )
 
+        # Normalize whitespace
         value = re.sub(r"\s+", " ", value).strip()
 
         return value or None
 
     # =====================================================
-    # UNIVERSAL SECTION EXTRACTOR
+    # GENERIC SECTION EXTRACTOR
     # =====================================================
 
-    def _extract_section(
+    def _extract_between(
         self,
         text: str,
-        start_keywords: list[str],
-        end_keywords: list[str],
+        start: str,
+        end: str | None,
     ):
         normalized = text.replace("’", "'")
 
-        start_parts = []
-        for keyword in start_keywords:
-            keyword = keyword.replace("’", "'")
-            start_parts.append(
-                rf"(?:<h[1-6][^>]*>\s*{re.escape(keyword)}\s*</h[1-6]>|{re.escape(keyword)})"
-            )
+        start = start.replace("’", "'")
+        end = end.replace("’", "'") if end else None
 
-        start_pattern = "|".join(start_parts)
-
-        if end_keywords:
-            end_parts = []
-            for keyword in end_keywords:
-                keyword = keyword.replace("’", "'")
-                end_parts.append(
-                    rf"(?:<h[1-6][^>]*>\s*{re.escape(keyword)}\s*</h[1-6]>|{re.escape(keyword)})"
-                )
-
-            end_pattern = "|".join(end_parts)
-
-            pattern = rf"(?:{start_pattern})\s*(.*?)(?=(?:{end_pattern}))"
-        else:
-            pattern = rf"(?:{start_pattern})\s*(.*)$"
-
-        match = re.search(
-            pattern,
-            normalized,
-            re.IGNORECASE | re.DOTALL,
-        )
-
-        if not match:
-            return None
-
-        return match.group(1).strip()
-
-    # =====================================================
-    # EXTRACT CONTENT FROM INSTRUCTIONAL TABLE PHASE
-    # =====================================================
-
-    def _extract_table_phase(self, text: str, phase_name: str):
-        pattern = (
-            rf"{re.escape(phase_name)}\s*</p>.*?"
-            rf"Guided Instruction\s*</p>.*?"
-            rf"(.*?)</p>"
-        )
-
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-
-        if not match:
-            return None
-
-        value = match.group(1)
-
-        value = re.sub(r"<[^>]+>", " ", value)
-        value = value.replace("&nbsp;", " ")
-        value = re.sub(r"\s+", " ", value).strip()
-
-        return value or None
-
-    # =====================================================
-    # HEADING-ONLY SECTION EXTRACTOR
-    # Works for BOTH:
-    #   <h2>CASE STUDY</h2>
-    #   CASE STUDY
-    # Prevents extracting table labels such as:
-    #   <td>Case Study</td>
-    # =====================================================
-
-    # =====================================================
-    # CASE STUDY EXTRACTOR
-    # Extracts only the real CASE STUDY section and ignores
-    # table rows such as "Case Study / Analysis"
-    # =====================================================
-
-    def _extract_heading_section(
-        self,
-        text: str,
-        heading: str,
-        end_keywords: list[str],
-    ):
-        normalized = text.replace("’", "'")
-
-        # Remove table rows that contain "Case Study"
-        normalized = re.sub(
-            r"<tr[^>]*>.*?Case Study.*?</tr>",
-            "",
-            normalized,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-
-        # Match either:
-        #   CASE STUDY
-        #   <h1>CASE STUDY</h1>
+        # Match HTML headings OR plain text headings
         start_pattern = (
-            rf"(?:<h[1-6][^>]*>\s*{re.escape(heading)}\s*</h[1-6]>"
-            rf"|{re.escape(heading)})"
+            rf"(?:<h[1-6][^>]*>\s*{re.escape(start)}\s*</h[1-6]>|{re.escape(start)})"
         )
 
-        end_parts = []
-        for k in end_keywords:
-            k = k.replace("’", "'")
-            end_parts.append(
-                rf"(?:<h[1-6][^>]*>\s*{re.escape(k)}\s*</h[1-6]>|{re.escape(k)})"
+        if end:
+            end_pattern = (
+                rf"(?:<h[1-6][^>]*>\s*{re.escape(end)}\s*</h[1-6]>|{re.escape(end)})"
             )
-
-        end_pattern = "|".join(end_parts)
-
-        pattern = rf"{start_pattern}\s*(.*?)(?=(?:{end_pattern})|$)"
+            pattern = rf"{start_pattern}\s*(.*?)(?={end_pattern})"
+        else:
+            pattern = rf"{start_pattern}\s*(.*)$"
 
         match = re.search(
             pattern,
@@ -394,41 +232,4 @@ class LessonParser:
 
         value = match.group(1).strip()
 
-        return value or None
-        # =====================================================
-
-    # EXTRACT PROJECT-BASED LEARNING FROM INSTRUCTIONAL TABLE
-    # =====================================================
-
-    def _extract_table_project_based_learning(self, text: str):
-        pattern = (
-            r"Project(?:￾|-)?Based\s+Learning.*?"
-            r"(?:Practical Activity|Project|Group / Individual\s+Project)\s*</p>.*?"
-            r"(.*?)</p>"
-        )
-
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-
-        if not match:
-            return None
-
-        value = match.group(1)
-
-        # Remove HTML tags
-        value = re.sub(r"<[^>]+>", " ", value)
-
-        # Decode entities
-        value = (
-            value.replace("&nbsp;", " ")
-            .replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-        )
-
-        value = re.sub(r"\s+", " ", value).strip()
-
-        return value or None
+        return value
