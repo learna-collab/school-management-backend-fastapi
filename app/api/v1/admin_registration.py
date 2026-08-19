@@ -248,6 +248,11 @@ async def import_students(
 # ======================================================
 
 
+# ======================================================
+# IMPORT TEACHERS
+# ======================================================
+
+
 @router.post("/teachers/import")
 async def import_teachers(
     admin: RequireSchoolAdmin,
@@ -265,7 +270,9 @@ async def import_teachers(
 
     payloads = [TeacherRegistrationCreate(**row) for row in rows]
 
-    result = await registration_service.register_students_batch(
+    # IMPORTANT:
+    # Teacher payloads must go through teacher registration.
+    result = await registration_service.register_teachers_batch(
         db=db,
         school_id=school.id,
         payloads=payloads,
@@ -280,7 +287,7 @@ async def import_teachers(
         excel,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
-            "Content-Disposition": ("attachment; filename=student_import_report.xlsx")
+            "Content-Disposition": ("attachment; filename=teacher_import_report.xlsx")
         },
     )
 
