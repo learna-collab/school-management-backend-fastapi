@@ -68,28 +68,30 @@ class RegistrationService:
         prefix = self.generate_school_prefix(school.name)
 
         result = await db.execute(
-            select(User.username)
-            .where(
+            select(User.username).where(
                 User.school_id == school.id,
                 User.username.like(f"{prefix}-%"),
             )
-            .order_by(User.username.desc())
-            .limit(1)
         )
 
-        last_username = result.scalar_one_or_none()
+        usernames = result.scalars().all()
 
-        if last_username:
-            match = re.search(r"-(\d+)$", last_username)
+        highest_number = 0
+
+        for username in usernames:
+            if not username:
+                continue
+
+            match = re.fullmatch(
+                rf"{re.escape(prefix)}-(\d+)",
+                username,
+            )
 
             if match:
-                next_number = int(match.group(1)) + 1
-            else:
-                next_number = 1
-        else:
-            next_number = 1
+                number = int(match.group(1))
+                highest_number = max(highest_number, number)
 
-        return f"{prefix}-{next_number:06d}"
+        return f"{prefix}-{highest_number + 1:06d}"
 
     def generate_password(self, length: int = 10):
         alphabet = string.ascii_letters + string.digits
@@ -109,21 +111,50 @@ class RegistrationService:
         role,
         email,
     ):
-        # ---------------------------------------
-        # Ensure email is unique
-        # ---------------------------------------
-
         school = await self.school_service.get_by_id(
             db,
             school_id,
         )
+
+        if not school:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="School not found.",
+            )
+
+        # ---------------------------------------
+        # Ensure email is not already registered
+        # ---------------------------------------
+
+        existing_user = await self.repo.email_exists(
+            db,
+            email,
+        )
+
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"User with email '{email}' already exists.",
+            )
+
+        # ---------------------------------------
+        # Generate unique username
+        # ---------------------------------------
 
         username = await self.generate_username(
             db,
             school,
         )
 
+        # ---------------------------------------
+        # Generate password
+        # ---------------------------------------
+
         password = self.generate_password()
+
+        # ---------------------------------------
+        # Create user
+        # ---------------------------------------
 
         user = await self.user_service.create_user_with_profile(
             db=db,
@@ -135,15 +166,24 @@ class RegistrationService:
             profile_completed=True,
         )
 
-        await self.repo.save(
-            db,
-            UserCredential(
-                school_id=school_id,
-                user_id=user.id,
-                username=username,
-                password=password,
-            ),
+        # Make absolutely sure the INSERT is visible
+        # to subsequent queries in this transaction.
+        await db.flush()
+
+        # ---------------------------------------
+        # Save credentials
+        # ---------------------------------------
+
+        credential = UserCredential(
+            school_id=school_id,
+            user_id=user.id,
+            username=username,
+            password=password,
         )
+
+        db.add(credential)
+
+        await db.flush()
 
         return user, username, password
 
@@ -292,7 +332,6 @@ class RegistrationService:
         payloads: list[StudentRegistrationCreate],
     ):
         credentials = []
-
         errors = []
 
         for index, payload in enumerate(payloads, start=2):
@@ -303,6 +342,8 @@ class RegistrationService:
                     payload=payload,
                 )
 
+                await db.commit()
+
                 credentials.append(
                     {
                         "name": f"{payload.first_name} {payload.last_name}",
@@ -312,6 +353,8 @@ class RegistrationService:
                 )
 
             except Exception as exc:
+                await db.rollback()
+
                 errors.append(
                     {
                         "row": index,
@@ -340,7 +383,6 @@ class RegistrationService:
         payloads: list[TeacherRegistrationCreate],
     ):
         credentials = []
-
         errors = []
 
         for index, payload in enumerate(payloads, start=2):
@@ -351,6 +393,8 @@ class RegistrationService:
                     payload=payload,
                 )
 
+                await db.commit()
+
                 credentials.append(
                     {
                         "name": f"{payload.first_name} {payload.last_name}",
@@ -360,6 +404,8 @@ class RegistrationService:
                 )
 
             except Exception as exc:
+                await db.rollback()
+
                 errors.append(
                     {
                         "row": index,

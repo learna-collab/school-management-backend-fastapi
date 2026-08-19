@@ -208,18 +208,36 @@ async def register_parents_batch(
 
 @router.post("/students/import")
 async def import_students(
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-    admin: RequireSchoolAdmin = None,
+    file: Annotated[UploadFile, File(...)],
+    db: DBSession,
+    admin: RequireSchoolAdmin,
 ):
     school = await get_school(
         db,
         admin,
     )
 
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No file provided.",
+        )
+
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Excel files are supported.",
+        )
+
     rows = excel_import_service.read_students(
         await file.read(),
     )
+
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The Excel file contains no student records.",
+        )
 
     payloads = [StudentRegistrationCreate(**row) for row in rows]
 
@@ -236,7 +254,9 @@ async def import_students(
 
     return StreamingResponse(
         excel,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
         headers={
             "Content-Disposition": ("attachment; filename=student_import_report.xlsx")
         },
@@ -248,30 +268,41 @@ async def import_students(
 # ======================================================
 
 
-# ======================================================
-# IMPORT TEACHERS
-# ======================================================
-
-
 @router.post("/teachers/import")
 async def import_teachers(
-    admin: RequireSchoolAdmin,
+    file: Annotated[UploadFile, File(...)],
     db: DBSession,
-    file: Annotated[UploadFile, File()] = ...,
+    admin: RequireSchoolAdmin,
 ):
     school = await get_school(
         db,
         admin,
     )
 
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No file provided.",
+        )
+
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Excel files are supported.",
+        )
+
     rows = excel_import_service.read_teachers(
         await file.read(),
     )
 
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The Excel file contains no teacher records.",
+        )
+
     payloads = [TeacherRegistrationCreate(**row) for row in rows]
 
-    # IMPORTANT:
-    # Teacher payloads must go through teacher registration.
     result = await registration_service.register_teachers_batch(
         db=db,
         school_id=school.id,
@@ -285,7 +316,9 @@ async def import_teachers(
 
     return StreamingResponse(
         excel,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
         headers={
             "Content-Disposition": ("attachment; filename=teacher_import_report.xlsx")
         },
