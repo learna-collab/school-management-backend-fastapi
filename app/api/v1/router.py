@@ -13,14 +13,14 @@ from . import (
     students,
     user,
 )
-from .admin_directory import router as admin_directory_router
-from .directory_school import router as directory_school_router
-from .locations import router as locations_router
+from .directory.directory_school import router as directory_school_router
+from .directory.locations import router as locations_router
 from .school_admin import academic_period, school_admin
 from .school_admin import lessons as school_admin_lessons
-from .school_admin_directory import router as school_admin_directory_router
+from .school_admin.school_admin_directory import router as school_admin_directory_router
 from .super_admin import academic as super_admin_academic
 from .super_admin import lessons as super_admin_lessons
+from .super_admin.admin_directory import router as admin_directory_router
 from .teacher import lessons as teacher_lessons
 from .teacher import teacher
 

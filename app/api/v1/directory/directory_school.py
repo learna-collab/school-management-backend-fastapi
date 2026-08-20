@@ -3,11 +3,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.db.database import get_db
-from app.schemas.directory_school import (
+from app.schemas.directory.directory_school import (
     DirectorySchoolDetail,
     DirectorySchoolListResponse,
 )
-from app.services.directory_service import DirectorySchoolService
+from app.services.directory.directory_service import DirectorySchoolService
 
 router = APIRouter(
     prefix="/directory/schools",

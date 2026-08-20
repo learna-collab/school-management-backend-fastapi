@@ -40,7 +40,6 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
     )
 
     week_number = Column(Integer, nullable=False)
-    lesson_day = Column(String(20), nullable=False)
 
     title = Column(String(255), nullable=False)
     topic = Column(String(255), nullable=False)

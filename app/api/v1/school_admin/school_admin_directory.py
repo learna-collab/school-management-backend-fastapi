@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
 from app.core.deps import DBSession, RequireSchoolAdmin
-from app.schemas.directory_school import (
+from app.schemas.directory.directory_school import (
     DirectorySchoolDetail,
     DirectorySchoolUpdate,
     DirectoryVisibilityUpdate,
 )
-from app.services.directory_service import DirectorySchoolService
+from app.services.directory.directory_service import DirectorySchoolService
 
 router = APIRouter(
     prefix="/school-admin/directory",

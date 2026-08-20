@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.core.deps import DBSession
-from app.services.directory_service import DirectorySchoolService
+from app.services.directory.directory_service import DirectorySchoolService
 
 router = APIRouter(
     prefix="/directory/locations",

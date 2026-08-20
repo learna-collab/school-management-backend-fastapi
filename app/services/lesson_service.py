@@ -28,20 +28,10 @@ class LessonService:
         session_id: UUID,
         term_id: UUID,
         week_number: int,
-        lesson_day: str,
         file: UploadFile,
     ):
         # keep original extension (.pdf, .docx, etc.)
         suffix = Path(file.filename).suffix.lower()
-        day_map = {
-            "Day 1": "Monday",
-            "Day 2": "Tuesday",
-            "Day 3": "Wednesday",
-            "Day 4": "Thursday",
-            "Day 5": "Friday",
-        }
-
-        day_name = day_map.get(lesson_day, lesson_day)
 
         # Get subject name from database
         subject = await db.get(SubjectTemplate, subject_template_id)
@@ -51,13 +41,15 @@ class LessonService:
         contents = await file.read()
 
         # Upload original file to Cloudinary
-        file_url = await cloudinary_service.upload_bytes(
+        upload_result = await cloudinary_service.upload_bytes(
             contents=contents,
             filename=file.filename,
             folder="lessons/daily",
-            public_id=f"Week-{week_number}-{day_name}-{subject_name}{suffix}",
-            resource_type="raw",  # important for pdf/docx
+            public_id=f"Week-{week_number}-{subject_name}{suffix}",
+            resource_type="raw",
         )
+
+        file_url = upload_result["url"]
 
         # Save temporarily for parsing
         with tempfile.NamedTemporaryFile(
@@ -71,7 +63,6 @@ class LessonService:
         parsed = await self.parser.parse(
             file_path=temp_path,
             week_number=week_number,
-            lesson_day=lesson_day,
         )
 
         # Create lesson
@@ -82,7 +73,6 @@ class LessonService:
             session_id=session_id,
             term_id=term_id,
             week_number=parsed.week_number,
-            lesson_day=parsed.lesson_day,
             title=parsed.title or "Untitled Lesson",
             topic=parsed.topic or parsed.title or "Untitled Lesson",
             objectives=(parsed.objectives or "Objectives not extracted from document."),

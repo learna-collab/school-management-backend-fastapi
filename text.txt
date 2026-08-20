@@ -1,0 +1,38 @@
+src/
+│
+├── app/
+│   │
+│   ├── page.tsx
+│   │
+│   ├── schools/
+│   │   ├── page.tsx
+│   │   └── [slug]/
+│   │       ├── page.tsx
+│   │       └── admissions/
+│   │           └── page.tsx
+│   │
+│   ├── login/
+│   │   └── page.tsx
+│   │
+│   └── admin/
+│       ├── page.tsx
+│       │
+│       ├── school/
+│       │   ├── page.tsx
+│       │   ├── facilities/
+│       │   │   └── page.tsx
+│       │   ├── programs/
+│       │   │   └── page.tsx
+│       │   ├── gallery/
+│       │   │   └── page.tsx
+│       │   └── admissions/
+│       │       └── page.tsx
+│       │
+│       └── schools/
+│           └── page.tsx
+│
+├── components/
+├── services/
+├── types/
+├── store/
+└── lib/

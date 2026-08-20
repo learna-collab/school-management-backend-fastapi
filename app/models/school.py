@@ -6,6 +6,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
+    from app.models.school_admission import SchoolAdmission
+    from app.models.school_facility import SchoolFacility
+    from app.models.school_gallery import SchoolGallery
+    from app.models.school_program import SchoolProgram
     from app.models.user import User
 
 
@@ -189,3 +193,23 @@ class School(Base, UUIDMixin, TimestampMixin):
         back_populates="school",
         cascade="all, delete-orphan",
     )
+    """ facilities: Mapped[list["SchoolFacility"]] = relationship(
+        "SchoolFacility",
+        back_populates="school",
+        cascade="all, delete-orphan",
+    )
+    programs: Mapped[list["SchoolProgram"]] = relationship(
+        "SchoolProgram",
+        back_populates="school",
+        cascade="all, delete-orphan",
+    )
+    gallery: Mapped[list["SchoolGallery"]] = relationship(
+        "SchoolGallery",
+        back_populates="school",
+        cascade="all, delete-orphan",
+    )
+    admissions: Mapped[list["SchoolAdmission"]] = relationship(
+        "SchoolAdmission",
+        back_populates="school",
+        cascade="all, delete-orphan",
+    ) """

@@ -35,7 +35,6 @@ class LessonResponse(BaseModel):
     id: str
 
     week_number: int
-    lesson_day: str
 
     class_name: str
     subject_name: str

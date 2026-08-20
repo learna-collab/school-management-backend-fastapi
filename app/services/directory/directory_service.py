@@ -1,6 +1,6 @@
 import math
 
-from app.repositories.directory_repository import DirectorySchoolRepository
+from app.repositories.directory.directory_repository import DirectorySchoolRepository
 
 
 class DirectorySchoolService:

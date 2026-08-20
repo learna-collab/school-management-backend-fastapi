@@ -47,7 +47,6 @@ class LessonRepository:
         return {
             "id": str(lesson.id),
             "week_number": lesson.week_number,
-            "lesson_day": lesson.lesson_day,
             "class_name": class_name,
             "subject_name": subject_name,
             "title": lesson.title,
@@ -86,7 +85,7 @@ class LessonRepository:
                 Lesson.session_id == session_id,
                 Lesson.term_id == term_id,
             )
-            .order_by(Lesson.week_number.asc(), Lesson.lesson_day.asc())
+            .order_by(Lesson.week_number.asc())
         )
 
         if week_number is not None:
@@ -159,7 +158,7 @@ class LessonRepository:
                 Lesson.term_id == term_id,
                 Lesson.is_published.is_(True),
             )
-            .order_by(Lesson.week_number.asc(), Lesson.lesson_day.asc())
+            .order_by(Lesson.week_number.asc())
         )
 
         if week_number is not None:
@@ -231,7 +230,6 @@ class LessonRepository:
             )
             .order_by(
                 Lesson.week_number.asc(),
-                Lesson.lesson_day.asc(),
             )
         )
 

@@ -77,7 +77,6 @@ async def upload_lesson(
     session_id: Annotated[UUID, Form(...)],
     term_id: Annotated[UUID, Form(...)],
     week_number: Annotated[int, Form(...)],
-    lesson_day: Annotated[str, Form(...)],
     file: Annotated[UploadFile, File(...)],
 ):
     return await service.upload_lesson(
@@ -88,7 +87,6 @@ async def upload_lesson(
         session_id=session_id,
         term_id=term_id,
         week_number=week_number,
-        lesson_day=lesson_day,
         file=file,
     )
 

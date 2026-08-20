@@ -13,7 +13,7 @@ class ParsedALF(BaseModel):
 
 class ParsedLesson(BaseModel):
     week_number: int
-    lesson_day: str
+    lesson_day: str | None = None
     title: str
     topic: Optional[str] = None
     objectives: Optional[str] = None
