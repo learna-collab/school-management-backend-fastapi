@@ -123,7 +123,6 @@ class LessonService:
         db: AsyncSession,
         *,
         class_template_id: UUID,
-        subject_template_id: UUID,
         session_id: UUID,
         term_id: UUID,
         week_number: int | None = None,
@@ -131,7 +130,6 @@ class LessonService:
         return await self.repository.get_lessons(
             db=db,
             class_template_id=class_template_id,
-            subject_template_id=subject_template_id,
             session_id=session_id,
             term_id=term_id,
             week_number=week_number,

@@ -19,7 +19,7 @@ async def list_lessons(
     db: DBSession,
     current_user: RequireTeacher,
     class_id: UUID = Query(...),
-    subject_id: UUID = Query(...),  # keep subject filter
+    # keep subject filter
     session_id: UUID = Query(...),
     term_id: UUID = Query(...),
     week_number: int | None = Query(None),
@@ -28,7 +28,7 @@ async def list_lessons(
         db=db,
         teacher_id=current_user.id,
         class_id=class_id,
-        subject_id=subject_id,  # pass subject
+        # pass subject
         session_id=session_id,
         term_id=term_id,
         week_number=week_number,

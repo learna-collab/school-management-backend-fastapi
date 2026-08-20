@@ -99,7 +99,6 @@ async def list_lessons(
     db: DBSession,
     _: RequireSuperAdmin,
     class_template_id: Annotated[UUID, Query(...)],
-    subject_template_id: Annotated[UUID, Query(...)],
     session_id: Annotated[UUID, Query(...)],
     term_id: Annotated[UUID, Query(...)],
     week_number: Annotated[int | None, Query()] = None,
@@ -107,7 +106,6 @@ async def list_lessons(
     return await service.get_lessons(
         db=db,
         class_template_id=class_template_id,
-        subject_template_id=subject_template_id,
         session_id=session_id,
         term_id=term_id,
         week_number=week_number,

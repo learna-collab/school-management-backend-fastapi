@@ -67,7 +67,6 @@ class LessonRepository:
         db: AsyncSession,
         *,
         class_template_id: UUID,
-        subject_template_id: UUID,
         session_id: UUID,
         term_id: UUID,
         week_number: int | None = None,
@@ -81,7 +80,6 @@ class LessonRepository:
             )
             .where(
                 Lesson.class_template_id == class_template_id,
-                Lesson.subject_template_id == subject_template_id,
                 Lesson.session_id == session_id,
                 Lesson.term_id == term_id,
             )
@@ -113,7 +111,6 @@ class LessonRepository:
         *,
         school_id: UUID,
         class_id: UUID,
-        subject_id: UUID,
         session_id: UUID,
         term_id: UUID,
         week_number: int | None = None,
@@ -135,25 +132,14 @@ class LessonRepository:
         if school_class.is_custom or not school_class.template_class_id:
             return []
 
-        # School subject
-        subject_result = await db.execute(
-            select(Subject).where(
-                Subject.id == subject_id,
-                Subject.school_id == school_id,
-            )
-        )
-
-        school_subject = subject_result.scalar_one_or_none()
-
-        if not school_subject or not school_subject.template_subject_id:
-            return []
-
         query = (
             select(Lesson)
-            .options(selectinload(Lesson.alf))
+            .options(
+                selectinload(Lesson.alf),
+                selectinload(Lesson.subject_template),
+            )
             .where(
                 Lesson.class_template_id == school_class.template_class_id,
-                Lesson.subject_template_id == school_subject.template_subject_id,
                 Lesson.session_id == session_id,
                 Lesson.term_id == term_id,
                 Lesson.is_published.is_(True),
@@ -171,7 +157,9 @@ class LessonRepository:
             self._lesson_to_dict(
                 lesson,
                 school_class.name,
-                school_subject.name,
+                lesson.subject_template.name
+                if lesson.subject_template
+                else "Unknown Subject",
             )
             for lesson in lessons
         ]
@@ -186,23 +174,15 @@ class LessonRepository:
         *,
         teacher_id: UUID,
         class_id: UUID,
-        subject_id: UUID,
         session_id: UUID,
         term_id: UUID,
         week_number: int | None = None,
     ):
+        # Validate class
         class_result = await db.execute(select(Class).where(Class.id == class_id))
         school_class = class_result.scalar_one_or_none()
 
         if not school_class or not school_class.template_class_id:
-            return []
-
-        subject_result = await db.execute(
-            select(Subject).where(Subject.id == subject_id)
-        )
-        school_subject = subject_result.scalar_one_or_none()
-
-        if not school_subject or not school_subject.template_subject_id:
             return []
 
         # Validate teacher is assigned to this class
@@ -212,7 +192,6 @@ class LessonRepository:
                 ClassTeacher.class_id == class_id,
             )
         )
-
         assignment = assignment_result.scalar_one_or_none()
 
         if not assignment:
@@ -220,17 +199,17 @@ class LessonRepository:
 
         query = (
             select(Lesson)
-            .options(selectinload(Lesson.alf))
+            .options(
+                selectinload(Lesson.alf),
+                selectinload(Lesson.subject_template),
+            )
             .where(
                 Lesson.class_template_id == school_class.template_class_id,
-                Lesson.subject_template_id == school_subject.template_subject_id,
                 Lesson.session_id == session_id,
                 Lesson.term_id == term_id,
                 Lesson.is_published.is_(True),
             )
-            .order_by(
-                Lesson.week_number.asc(),
-            )
+            .order_by(Lesson.week_number.asc())
         )
 
         if week_number is not None:
@@ -243,7 +222,9 @@ class LessonRepository:
             self._lesson_to_dict(
                 lesson,
                 school_class.name,
-                school_subject.name,
+                lesson.subject_template.name
+                if lesson.subject_template
+                else "Unknown Subject",
             )
             for lesson in lessons
         ]
