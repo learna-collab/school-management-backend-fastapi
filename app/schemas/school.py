@@ -2,10 +2,7 @@ from pydantic import BaseModel, EmailStr
 
 
 class SchoolCreate(BaseModel):
-    # ==========================
-    # SCHOOL
-    # ==========================
-
+    # School
     school_name: str
     website: str | None = None
     phone: str
@@ -14,14 +11,10 @@ class SchoolCreate(BaseModel):
     address: str
     description: str | None = None
 
-    # ==========================
-    # SCHOOL ADMIN
-    # ==========================
-
+    # School Admin
     admin_first_name: str
     admin_last_name: str
     admin_email: EmailStr
-    admin_password: str
 
 
 class SchoolOnboardingRequest(BaseModel):

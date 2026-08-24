@@ -17,11 +17,9 @@ class DirectorySchoolRepository:
         ownership_type: str | None = None,
         verified: bool | None = None,
     ):
-        conditions = [
-            School.is_active.is_(True),
-            School.is_directory_visible.is_(True),
-        ]
-
+        conditions = []
+        """ School.is_active.is_(True),
+                    School.is_directory_visible.is_(True), """
         # ---------------------------------------------
         # SEARCH
         # ---------------------------------------------
@@ -100,8 +98,8 @@ class DirectorySchoolRepository:
         stmt = select(School).where(
             School.slug == slug,
             School.is_active.is_(True),
-            School.is_directory_visible.is_(True),
         )
+        """ School.is_directory_visible.is_(True), """
 
         result = await db.execute(stmt)
 

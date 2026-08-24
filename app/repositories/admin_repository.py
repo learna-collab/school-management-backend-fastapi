@@ -38,6 +38,15 @@ class AdminRepository:
         result = await db.execute(select(User).where(User.id == user_id))
         return result.scalars().first()
 
+    async def get_user_by_username(
+        self,
+        db,
+        username: str,
+    ):
+        result = await db.execute(select(User).where(User.username == username))
+
+        return result.scalar_one_or_none()
+
     # DELETE USER
     async def delete_user(self, db, user):
         await db.delete(user)

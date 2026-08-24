@@ -1,38 +1,125 @@
 src/
 │
 ├── app/
-│   │
-│   ├── page.tsx
+│   ├── layout.tsx
+│   ├── page.tsx                    # Homepage
 │   │
 │   ├── schools/
-│   │   ├── page.tsx
+│   │   ├── page.tsx                # All schools
 │   │   └── [slug]/
-│   │       ├── page.tsx
-│   │       └── admissions/
-│   │           └── page.tsx
+│   │       ├── page.tsx            # School profile
+│   │       ├── gallery/
+│   │       │   └── page.tsx        # Full gallery
+│   │       ├── facilities/
+│   │       │   └── page.tsx        # Facilities
+│   │       ├── programs/
+│   │       │   └── page.tsx        # Programs
+│   │       ├── admissions/
+│   │       │   ├── page.tsx        # All admissions
+│   │       │   └── [admissionId]/
+│   │       │       └── page.tsx    # Admission details
+│   │       └── enquire/
+│   │           └── page.tsx        # Admission enquiry form
 │   │
-│   ├── login/
+│   ├── search/
+│   │   └── page.tsx                # Advanced search
+│   │
+│   ├── featured/
+│   │   └── page.tsx                # Featured schools
+│   │
+│   ├── states/
+│   │   ├── page.tsx                # All states
+│   │   └── [state]/
+│   │       └── page.tsx            # Schools in a state
+│   │
+│   ├── about/
 │   │   └── page.tsx
 │   │
-│   └── admin/
-│       ├── page.tsx
-│       │
-│       ├── school/
-│       │   ├── page.tsx
-│       │   ├── facilities/
-│       │   │   └── page.tsx
-│       │   ├── programs/
-│       │   │   └── page.tsx
-│       │   ├── gallery/
-│       │   │   └── page.tsx
-│       │   └── admissions/
-│       │       └── page.tsx
-│       │
-│       └── schools/
-│           └── page.tsx
+│   └── contact/
+│   │   └── page.tsx
 │
 ├── components/
+│   ├── layout/
+│   │   ├── Header.tsx
+│   │   ├── Footer.tsx
+│   │   └── SearchBar.tsx
+│   │
+│   ├── schools/
+│   │   ├── SchoolCard.tsx
+│   │   ├── SchoolGrid.tsx
+│   │   ├── SchoolHero.tsx
+│   │   ├── FacilityList.tsx
+│   │   ├── ProgramList.tsx
+│   │   ├── GalleryGrid.tsx
+│   │   ├── AdmissionCard.tsx
+│   │   └── EnquiryForm.tsx
+│   │
+│   └── ui/
+│
 ├── services/
+│   ├── api.ts
+│   ├── school.service.ts
+│   ├── facility.service.ts
+│   ├── program.service.ts
+│   ├── gallery.service.ts
+│   ├── admission.service.ts
+│   └── enquiry.service.ts
+│
 ├── types/
+│   ├── school.ts
+│   ├── facility.ts
+│   ├── program.ts
+│   ├── gallery.ts
+│   ├── admission.ts
+│   └── enquiry.ts
+│
 ├── store/
+│
 └── lib/
+    └── utils.ts
+
+
+
+    components/
+│
+├── layout/
+│   ├── Header.tsx
+│   ├── Footer.tsx
+│   ├── MobileMenu.tsx
+│   ├── SearchBar.tsx
+│   └── Breadcrumb.tsx
+│
+├── schools/
+│   ├── SchoolCard.tsx
+│   ├── SchoolGrid.tsx
+│   ├── FeaturedSchoolCard.tsx
+│   ├── SchoolHero.tsx
+│   ├── SchoolOverview.tsx
+│   ├── ContactCard.tsx
+│   ├── FacilityList.tsx
+│   ├── ProgramList.tsx
+│   ├── GalleryGrid.tsx
+│   ├── AdmissionCard.tsx
+│   ├── AdmissionTimeline.tsx
+│   ├── EnquiryForm.tsx
+│   ├── SchoolStats.tsx
+│   └── ShareSchool.tsx
+│
+├── filters/
+│   ├── StateFilter.tsx
+│   ├── SchoolTypeFilter.tsx
+│   ├── OwnershipFilter.tsx
+│   └── FilterBar.tsx
+│
+└── ui/
+    ├── Button.tsx
+    ├── Card.tsx
+    ├── Badge.tsx
+    ├── Input.tsx
+    ├── Select.tsx
+    ├── Textarea.tsx
+    ├── EmptyState.tsx
+    ├── LoadingSpinner.tsx
+    ├── Pagination.tsx
+    ├── SectionHeading.tsx
+    └── Modal.tsx

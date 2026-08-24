@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.models.school import School
@@ -6,26 +6,51 @@ from app.models.user import User, UserRole
 
 
 class SchoolRepository:
+    # =====================================================
+    # CREATE
+    # =====================================================
+
     async def create(self, db, school: School):
+        """
+        Add a school to the current transaction.
+
+        Does not commit.
+        """
         db.add(school)
-
-        await db.commit()
-
+        await db.flush()
         await db.refresh(school)
-
         return school
+
+    # =====================================================
+    # GET ALL
+    # =====================================================
 
     async def get_all(self, db):
         result = await db.execute(select(School).order_by(School.created_at.desc()))
-
         return result.scalars().all()
 
-    async def get_by_id(self, db, school_id):
-        result = await db.execute(select(School).where(School.id == school_id))
+    # =====================================================
+    # GET BY ID
+    # =====================================================
 
-        return result.scalars().first()
+    async def get_by_id(self, db, school_id):
+        result = await db.execute(
+            select(School)
+            .options(selectinload(School.users).selectinload(User.credential))
+            .where(School.id == school_id)
+        )
+        return result.scalar_one_or_none()
+
+    # =====================================================
+    # GET SCHOOLS
+    # =====================================================
 
     async def get_schools(self, db):
+        """
+        Returns schools formatted for the Super Admin dashboard.
+
+        Passwords are intentionally omitted from the listing.
+        """
         result = await db.execute(
             select(School)
             .options(selectinload(School.users).selectinload(User.credential))
@@ -68,34 +93,54 @@ class SchoolRepository:
 
         return response
 
-    async def get_by_slug(
-        self,
-        db,
-        slug: str,
-    ):
-        result = await db.execute(select(School).where(School.slug == slug))
+    # =====================================================
+    # GET BY SLUG
+    # =====================================================
 
+    async def get_by_slug(self, db, slug: str):
+        result = await db.execute(select(School).where(School.slug == slug))
         return result.scalar_one_or_none()
+
+    # =====================================================
+    # GET BY CODE
+    # =====================================================
 
     async def get_by_code(self, db, code):
         result = await db.execute(select(School).where(School.code == code))
+        return result.scalar_one_or_none()
 
-        return result.scalars().first()
+    # =====================================================
+    # SLUG EXISTS
+    # =====================================================
+
+    async def slug_exists(self, db, slug: str) -> bool:
+        result = await db.execute(select(School.id).where(School.slug == slug))
+        return result.scalar_one_or_none() is not None
+
+    # =====================================================
+    # COUNT SCHOOLS
+    # =====================================================
+
+    async def count(self, db):
+        result = await db.execute(select(func.count()).select_from(School))
+        return result.scalar_one()
+
+    # =====================================================
+    # DELETE
+    # =====================================================
 
     async def delete(self, db, school: School):
+        """Deletes inside the current transaction."""
         await db.delete(school)
+        await db.flush()
 
-        await db.commit()
+    # =====================================================
+    # SAVE
+    # =====================================================
 
-    async def save(
-        self,
-        db,
-        school: School,
-    ):
+    async def save(self, db, school: School):
+        """Saves changes without committing."""
         db.add(school)
-
-        await db.commit()
-
+        await db.flush()
         await db.refresh(school)
-
         return school
