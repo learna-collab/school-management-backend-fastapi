@@ -2,7 +2,6 @@ import itertools
 import secrets
 import string
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.school import School
@@ -82,14 +81,15 @@ def get_school_letters(school_name: str) -> str:
     )
 
 
-def generate_username_candidates(school_name: str) -> list[str]:
+def generate_username_candidates(
+    school_name: str,
+) -> list[str]:
     """
     Generate 3-letter username prefixes from the school name.
 
-    The first three letters are always preferred.
+    The first three letters are preferred.
 
     Example:
-
         Abia International School
 
         ABI
@@ -121,7 +121,6 @@ def generate_username_candidates(school_name: str) -> list[str]:
     # ---------------------------------------------
 
     first_three = letters[:3]
-
     candidates.append(first_three)
 
     # ---------------------------------------------
@@ -164,8 +163,6 @@ class AdminService:
             abia-international-school
             abia-international-school-2
             abia-international-school-3
-
-        The database is checked directly.
         """
 
         base = slugify(school_name)
@@ -199,15 +196,6 @@ class AdminService:
             ABI-ADMIN
             AII-ADMIN
             AIS-ADMIN
-
-        The database is checked for every candidate.
-
-        The first three letters of the school name
-        are always preferred.
-
-        If that username already exists, another
-        3-letter combination from the school name
-        is checked.
         """
 
         candidates = generate_username_candidates(school_name)
@@ -237,11 +225,23 @@ class AdminService:
     async def get_schools(
         self,
         db: AsyncSession,
+        search: str | None = None,
+        page: int = 1,
+        per_page: int = 10,
     ):
-        return await self.school_repo.get_schools(db)
+        """
+        Get schools with optional search and pagination.
+        """
+
+        return await self.school_repo.get_schools(
+            db=db,
+            search=search,
+            page=page,
+            per_page=per_page,
+        )
 
     # =================================================
-    # CREATE SCHOOL
+    # CREATE ONE SCHOOL
     # =================================================
 
     async def create_school(
@@ -250,21 +250,14 @@ class AdminService:
         payload,
     ):
         """
-        Create:
+        Create ONE school together with:
 
         1. School
-        2. School Admin
+        2. Primary School Admin
         3. UserCredential
 
-        Everything is committed as one transaction.
-
-        IMPORTANT:
-        We do NOT use `async with db.begin()` here because
-        repository SELECT operations may already have started
-        a transaction on this AsyncSession.
-
-        The database UNIQUE constraints remain the final
-        protection against concurrent duplicates.
+        This is intentionally a single-school registration
+        operation. No batch/bulk school creation is included.
         """
 
         generated_password = generate_password()
@@ -275,8 +268,8 @@ class AdminService:
             # -----------------------------------------
 
             slug = await self._generate_unique_slug(
-                db,
-                payload.school_name,
+                db=db,
+                school_name=payload.school_name,
             )
 
             # -----------------------------------------
@@ -313,12 +306,12 @@ class AdminService:
             # -----------------------------------------
 
             username = await self._generate_unique_username(
-                db,
-                payload.school_name,
+                db=db,
+                school_name=payload.school_name,
             )
 
             # -----------------------------------------
-            # CREATE SCHOOL ADMIN
+            # CREATE PRIMARY SCHOOL ADMIN
             # -----------------------------------------
 
             admin = User(
@@ -351,7 +344,7 @@ class AdminService:
             db.add(credential)
 
             # -----------------------------------------
-            # COMMIT EVERYTHING
+            # COMMIT
             # -----------------------------------------
 
             await db.commit()
@@ -433,19 +426,6 @@ class AdminService:
     ):
         """
         Create another SCHOOL_ADMIN for an existing school.
-
-        Username format:
-
-            XXX-ADMIN
-
-        If the first combination already exists,
-        another combination from the school name is used.
-
-        Example:
-
-            ABI-ADMIN
-            AII-ADMIN
-            AIS-ADMIN
         """
 
         school = await self.school_repo.get_by_id(
@@ -464,8 +444,8 @@ class AdminService:
             # -----------------------------------------
 
             username = await self._generate_unique_username(
-                db,
-                school.name,
+                db=db,
+                school_name=school.name,
             )
 
             # -----------------------------------------
@@ -488,7 +468,7 @@ class AdminService:
             await db.flush()
 
             # -----------------------------------------
-            # CREDENTIAL
+            # SAVE CREDENTIAL
             # -----------------------------------------
 
             credential = UserCredential(
@@ -692,3 +672,235 @@ class AdminService:
         db: AsyncSession,
     ):
         return await self.repo.get_admins(db)
+
+    # =================================================
+    # UPDATE SCHOOL
+    # =================================================
+
+    async def update_school(
+        self,
+        db: AsyncSession,
+        school_id,
+        payload,
+    ):
+        """
+        Update an existing school and ensure that it has.
+
+        a valid primary SCHOOL_ADMIN and UserCredential.
+
+        Behavior:
+
+        1. Update school information.
+        2. Find existing SCHOOL_ADMIN.
+        3. If admin exists:
+        - update admin profile
+        - preserve username/password
+        4. If admin exists but credential is missing:
+        - create UserCredential
+        - generate a new password
+        5. If no SCHOOL_ADMIN exists:
+        - create SCHOOL_ADMIN
+        - generate username/password
+        - create UserCredential
+        6. Return school + credentials.
+
+        Existing credentials are NEVER changed during
+        a normal school update.
+        """
+        # =================================================
+        # GET SCHOOL
+        # =================================================
+
+        school = await self.school_repo.get_by_id(
+            db,
+            school_id,
+        )
+
+        if not school:
+            return None
+
+        try:
+            # =================================================
+            # UPDATE SCHOOL INFORMATION
+            # =================================================
+
+            school = await self.school_repo.update(
+                db,
+                school,
+                payload,
+            )
+
+            # =================================================
+            # FIND PRIMARY SCHOOL ADMIN
+            # =================================================
+
+            admin = next(
+                (user for user in school.users if user.role == UserRole.SCHOOL_ADMIN),
+                None,
+            )
+
+            # =================================================
+            # VARIABLES
+            # =================================================
+
+            username: str | None = None
+            password: str | None = None
+
+            # =================================================
+            # CASE 1:
+            # ADMIN ALREADY EXISTS
+            # =================================================
+
+            if admin:
+                # ---------------------------------------------
+                # UPDATE ADMIN PROFILE
+                # ---------------------------------------------
+
+                admin.first_name = payload.admin_first_name
+                admin.last_name = payload.admin_last_name
+                admin.email = payload.admin_email
+
+                db.add(admin)
+
+                await db.flush()
+
+                # ---------------------------------------------
+                # CHECK CREDENTIAL
+                # ---------------------------------------------
+
+                credential = admin.credential
+
+                # ---------------------------------------------
+                # ADMIN HAS CREDENTIAL
+                # ---------------------------------------------
+
+                if credential:
+                    username = credential.username
+                    password = credential.password
+
+                # ---------------------------------------------
+                # ADMIN HAS NO CREDENTIAL
+                # CREATE ONE
+                # ---------------------------------------------
+
+                else:
+                    username = admin.username
+
+                    # If username somehow doesn't exist,
+                    # generate one.
+                    if not username:
+                        username = await self._generate_unique_username(
+                            db=db,
+                            school_name=school.name,
+                        )
+
+                        admin.username = username
+
+                        db.add(admin)
+
+                        await db.flush()
+
+                    # Generate a new password because
+                    # there is no stored credential.
+                    password = generate_password()
+
+                    credential = UserCredential(
+                        school_id=school.id,
+                        user_id=admin.id,
+                        username=username,
+                        password=password,
+                    )
+
+                    db.add(credential)
+
+                    await db.flush()
+
+            # =================================================
+            # CASE 2:
+            # NO SCHOOL ADMIN EXISTS
+            # CREATE ADMIN + CREDENTIALS
+            # =================================================
+
+            else:
+                # ---------------------------------------------
+                # GENERATE USERNAME
+                # ---------------------------------------------
+
+                username = await self._generate_unique_username(
+                    db=db,
+                    school_name=school.name,
+                )
+
+                # ---------------------------------------------
+                # GENERATE PASSWORD
+                # ---------------------------------------------
+
+                password = generate_password()
+
+                # ---------------------------------------------
+                # CREATE SCHOOL ADMIN
+                # ---------------------------------------------
+
+                admin = User(
+                    first_name=payload.admin_first_name,
+                    last_name=payload.admin_last_name,
+                    username=username,
+                    email=payload.admin_email,
+                    password_hash=hash_password(password),
+                    role=UserRole.SCHOOL_ADMIN,
+                    school_id=school.id,
+                    profile_completed=True,
+                )
+
+                db.add(admin)
+
+                await db.flush()
+
+                # ---------------------------------------------
+                # CREATE CREDENTIAL
+                # ---------------------------------------------
+
+                credential = UserCredential(
+                    school_id=school.id,
+                    user_id=admin.id,
+                    username=username,
+                    password=password,
+                )
+
+                db.add(credential)
+
+                await db.flush()
+
+                # ---------------------------------------------
+                # ADD ADMIN TO SCHOOL RELATIONSHIP
+                # ---------------------------------------------
+
+                school.users.append(admin)
+
+            # =================================================
+            # COMMIT EVERYTHING
+            # =================================================
+
+            await db.commit()
+
+            # =================================================
+            # REFRESH SCHOOL
+            # =================================================
+
+            await db.refresh(school)
+
+            # =================================================
+            # RETURN
+            # =================================================
+
+            return {
+                "school": school,
+                "credentials": {
+                    "username": username,
+                    "password": password,
+                },
+            }
+
+        except Exception:
+            await db.rollback()
+            raise

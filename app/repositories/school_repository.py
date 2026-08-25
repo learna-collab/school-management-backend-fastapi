@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.models.school import School
@@ -13,7 +13,6 @@ class SchoolRepository:
     async def create(self, db, school: School):
         """
         Add a school to the current transaction.
-
         Does not commit.
         """
         db.add(school)
@@ -45,25 +44,41 @@ class SchoolRepository:
     # GET SCHOOLS
     # =====================================================
 
-    async def get_schools(self, db):
-        """
-        Returns schools formatted for the Super Admin dashboard.
-
-        Passwords are intentionally omitted from the listing.
-        """
-        result = await db.execute(
+    async def get_schools(
+        self,
+        db,
+        search: str | None = None,
+        page: int = 1,
+        per_page: int = 10,
+    ):
+        query = (
             select(School)
             .options(selectinload(School.users).selectinload(User.credential))
             .order_by(School.name)
         )
 
-        schools = result.scalars().unique().all()
+        if search:
+            query = query.where(
+                or_(
+                    School.name.ilike(f"%{search}%"),
+                    School.slug.ilike(f"%{search}%"),
+                    School.email.ilike(f"%{search}%"),
+                    School.phone.ilike(f"%{search}%"),
+                )
+            )
+
+        count_query = select(func.count()).select_from(query.subquery())
+        total = (await db.execute(count_query)).scalar_one()
+
+        query = query.offset((page - 1) * per_page).limit(per_page)
+
+        schools = (await db.execute(query)).scalars().unique().all()
 
         response = []
 
         for school in schools:
             admin = next(
-                (user for user in school.users if user.role == UserRole.SCHOOL_ADMIN),
+                (u for u in school.users if u.role == UserRole.SCHOOL_ADMIN),
                 None,
             )
 
@@ -78,6 +93,9 @@ class SchoolRepository:
                     "phone": school.phone,
                     "state": school.state,
                     "website": school.website,
+                    "address": school.address,
+                    "description": school.description,
+                    "whatsapp_number": school.whatsapp_number,
                     "subscription_plan": school.subscription_plan,
                     "is_active": school.is_active,
                     "admin": {
@@ -91,7 +109,13 @@ class SchoolRepository:
                 }
             )
 
-        return response
+        return {
+            "items": response,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "pages": (total + per_page - 1) // per_page,
+        }
 
     # =====================================================
     # GET BY SLUG
@@ -126,11 +150,39 @@ class SchoolRepository:
         return result.scalar_one()
 
     # =====================================================
+    # UPDATE
+    # =====================================================
+
+    async def update(self, db, school: School, payload):
+        """
+        Updates an existing school inside the current transaction.
+        Does not commit.
+        """
+
+        school.name = payload.school_name
+        school.phone = payload.phone
+        school.website = payload.website or None
+        school.whatsapp_number = payload.whatsapp_number or None
+        school.state = payload.state
+        school.address = payload.address
+        school.description = payload.description or None
+        school.email = payload.admin_email
+
+        db.add(school)
+
+        await db.flush()
+        school = await self.get_by_id(db, school.id)
+
+        return school
+
+    # =====================================================
     # DELETE
     # =====================================================
 
     async def delete(self, db, school: School):
-        """Deletes inside the current transaction."""
+        """
+        Deletes inside the current transaction.
+        """
         await db.delete(school)
         await db.flush()
 
@@ -139,7 +191,9 @@ class SchoolRepository:
     # =====================================================
 
     async def save(self, db, school: School):
-        """Saves changes without committing."""
+        """
+        Saves changes without committing.
+        """
         db.add(school)
         await db.flush()
         await db.refresh(school)

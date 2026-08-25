@@ -48,9 +48,13 @@ class AdminRepository:
         return result.scalar_one_or_none()
 
     # DELETE USER
-    async def delete_user(self, db, user):
+    async def delete_user(
+        self,
+        db,
+        user,
+    ):
         await db.delete(user)
-        await db.commit()
+        await db.flush()
         return True
 
     async def get_admins(self, db):
@@ -81,10 +85,13 @@ class AdminRepository:
         ]
 
     # SAVE USER
-    async def save_user(self, db, user):
+    async def save_user(
+        self,
+        db,
+        user,
+    ):
         db.add(user)
-        await db.commit()
-        await db.refresh(user)
+        await db.flush()
         return user
 
     async def save(

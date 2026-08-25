@@ -1,4 +1,26 @@
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr
+
+
+class SchoolUpdate(BaseModel):
+    # ==========================
+    # SCHOOL
+    # ==========================
+    school_name: str
+    website: str | None = None
+    phone: str
+    whatsapp_number: str | None = None
+    state: str
+    address: str
+    description: str | None = None
+
+    # ==========================
+    # SCHOOL ADMIN
+    # ==========================
+    admin_first_name: str
+    admin_last_name: str
+    admin_email: str
 
 
 class SchoolCreate(BaseModel):

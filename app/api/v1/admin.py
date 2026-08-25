@@ -1,11 +1,14 @@
+from io import BytesIO
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import DBSession, RequireSuperAdmin
 from app.db.database import get_db
-from app.schemas.school import SchoolCreate
+from app.schemas.school import SchoolCreate, SchoolUpdate
 from app.services.admin_service import AdminService
 from app.services.school_service import SchoolService
 
@@ -22,24 +25,29 @@ service = AdminService()
 # =====================================================
 # GET SCHOOLS
 # =====================================================
+
+
 @router.get("/schools")
 async def get_schools(
-    db: Annotated[
-        AsyncSession,
-        Depends(get_db),
-    ],
+    db: DBSession,
     _: RequireSuperAdmin,
+    search: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=10, ge=1, le=100),
 ):
-    schools = await service.get_schools(db)
-
-    return {
-        "schools": schools,
-    }
+    return await service.get_schools(
+        db=db,
+        search=search,
+        page=page,
+        per_page=per_page,
+    )
 
 
 # =====================================================
 # CREATE SCHOOL
 # =====================================================
+
+
 @router.post("/schools")
 async def create_school(
     payload: SchoolCreate,
@@ -53,7 +61,6 @@ async def create_school(
         db,
         payload,
     )
-
     return {
         "message": "School created successfully.",
         "school": result["school"],
@@ -62,8 +69,43 @@ async def create_school(
 
 
 # =====================================================
+# UPDATE SCHOOL
+# =====================================================
+
+
+@router.put("/schools/{school_id}")
+async def update_school(
+    school_id: str,
+    payload: SchoolUpdate,
+    db: Annotated[
+        AsyncSession,
+        Depends(get_db),
+    ],
+    _: RequireSuperAdmin,
+):
+    school = await service.update_school(
+        db,
+        school_id,
+        payload,
+    )
+
+    if not school:
+        raise HTTPException(
+            status_code=404,
+            detail="School not found.",
+        )
+
+    return {
+        "message": "School updated successfully.",
+        "school": school,
+    }
+
+
+# =====================================================
 # DELETE SCHOOL
 # =====================================================
+
+
 @router.delete("/schools/{school_id}")
 async def delete_school(
     school_id: str,
@@ -77,13 +119,11 @@ async def delete_school(
         db,
         school_id,
     )
-
     if not deleted:
         raise HTTPException(
             status_code=404,
             detail="School not found",
         )
-
     return {
         "message": "School deleted successfully",
     }
@@ -92,6 +132,8 @@ async def delete_school(
 # =====================================
 # DASHBOARD STATS
 # =====================================
+
+
 @router.post("/create-school-admin")
 async def create_school_admin(
     payload: dict,
@@ -99,10 +141,8 @@ async def create_school_admin(
     _: RequireSuperAdmin,
 ):
     user = await service.create_school_admin(db, payload)
-
     if not user:
         raise HTTPException(status_code=400, detail="Failed to create admin")
-
     return {
         "message": "School admin created",
         "user": user,
@@ -116,10 +156,8 @@ async def delete_admin(
     _: RequireSuperAdmin,
 ):
     result = await service.delete_admin(db, user_id)
-
     if not result:
         raise HTTPException(status_code=404, detail="Admin not found")
-
     return {
         "message": "Admin deleted",
     }
@@ -139,7 +177,6 @@ async def get_admins(
     _: RequireSuperAdmin,
 ):
     admins = await service.get_admins(db)
-
     return {
         "message": "Admins fetched successfully",
         "admins": admins,
@@ -163,13 +200,11 @@ async def assign_school_admin(
         user_id,
         school_id,
     )
-
     if not user:
         raise HTTPException(
             status_code=404,
             detail="User or School not found",
         )
-
     return {
         "message": "School admin assigned successfully",
         "user": user,
@@ -191,13 +226,11 @@ async def revoke_school_admin(
         db,
         user_id,
     )
-
     if not user:
         raise HTTPException(
             status_code=404,
             detail="User not found",
         )
-
     return {
         "message": "School admin revoked",
         "user": user,
@@ -222,13 +255,11 @@ async def disable_school(
         db,
         school_id,
     )
-
     if not school:
         raise HTTPException(
             status_code=404,
             detail="School not found.",
         )
-
     return {
         "message": "School disabled successfully.",
         "school": school,
@@ -253,14 +284,65 @@ async def enable_school(
         db,
         school_id,
     )
-
     if not school:
         raise HTTPException(
             status_code=404,
             detail="School not found.",
         )
-
     return {
         "message": "School enabled successfully.",
         "school": school,
     }
+
+
+@router.get("/schools/export")
+async def export_schools(
+    db: DBSession,
+    _: RequireSuperAdmin,
+    search: str | None = None,
+):
+    result = await service.get_schools(
+        db=db,
+        search=search,
+        page=1,
+        per_page=100000,
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Schools"
+
+    ws.append(
+        [
+            "School",
+            "State",
+            "Phone",
+            "Admin",
+            "Username",
+            "Status",
+        ]
+    )
+
+    for school in result["items"]:
+        admin = school["admin"]
+
+        ws.append(
+            [
+                school["name"],
+                school["state"],
+                school["phone"],
+                f"{admin['first_name']} {admin['last_name']}",
+                admin["username"],
+                "Active" if school["is_active"] else "Disabled",
+            ]
+        )
+
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="schools.xlsx"'},
+    )
