@@ -227,12 +227,9 @@ class AdminService:
         db: AsyncSession,
         search: str | None = None,
         page: int = 1,
-        per_page: int = 10,
+        per_page: int = 50,
     ):
-        """
-        Get schools with optional search and pagination.
-        """
-
+        """Get schools with optional search and pagination."""
         return await self.school_repo.get_schools(
             db=db,
             search=search,

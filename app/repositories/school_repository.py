@@ -49,7 +49,7 @@ class SchoolRepository:
         db,
         search: str | None = None,
         page: int = 1,
-        per_page: int = 10,
+        per_page: int = 50,
     ):
         query = (
             select(School)
@@ -57,6 +57,9 @@ class SchoolRepository:
             .order_by(School.name)
         )
 
+        # -----------------------------------------
+        # SEARCH
+        # -----------------------------------------
         if search:
             query = query.where(
                 or_(
@@ -67,18 +70,30 @@ class SchoolRepository:
                 )
             )
 
+        # -----------------------------------------
+        # TOTAL
+        # -----------------------------------------
         count_query = select(func.count()).select_from(query.subquery())
+
         total = (await db.execute(count_query)).scalar_one()
 
-        query = query.offset((page - 1) * per_page).limit(per_page)
+        # -----------------------------------------
+        # PAGINATION
+        # -----------------------------------------
+        offset = (page - 1) * per_page
+
+        query = query.offset(offset).limit(per_page)
 
         schools = (await db.execute(query)).scalars().unique().all()
 
+        # -----------------------------------------
+        # RESPONSE
+        # -----------------------------------------
         response = []
 
         for school in schools:
             admin = next(
-                (u for u in school.users if u.role == UserRole.SCHOOL_ADMIN),
+                (user for user in school.users if user.role == UserRole.SCHOOL_ADMIN),
                 None,
             )
 
@@ -100,21 +115,26 @@ class SchoolRepository:
                     "is_active": school.is_active,
                     "admin": {
                         "id": str(admin.id) if admin else None,
-                        "first_name": admin.first_name if admin else None,
-                        "last_name": admin.last_name if admin else None,
-                        "email": admin.email if admin else None,
-                        "username": credential.username if credential else None,
-                        "password": credential.password if credential else None,
+                        "first_name": (admin.first_name if admin else None),
+                        "last_name": (admin.last_name if admin else None),
+                        "email": (admin.email if admin else None),
+                        "username": (credential.username if credential else None),
+                        "password": (credential.password if credential else None),
                     },
                 }
             )
+
+        # -----------------------------------------
+        # TOTAL PAGES
+        # -----------------------------------------
+        total_pages = (total + per_page - 1) // per_page if total > 0 else 1
 
         return {
             "items": response,
             "total": total,
             "page": page,
             "per_page": per_page,
-            "pages": (total + per_page - 1) // per_page,
+            "total_pages": total_pages,
         }
 
     # =====================================================
