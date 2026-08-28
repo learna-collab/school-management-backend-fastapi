@@ -1,6 +1,8 @@
 import itertools
+import re
 import secrets
 import string
+import unicodedata
 from io import BytesIO
 
 from openpyxl import load_workbook
@@ -20,20 +22,52 @@ from app.utils.helper import hash_password
 
 def slugify(name: str) -> str:
     """
-    Convert school name into a URL-friendly slug.
+    Convert a school name into a clean, URL-safe slug.
 
-    Example:
+    Examples:
         "Abia International School"
         -> "abia-international-school"
+
+        "Amazing Grace Nursery/Primary School"
+        -> "amazing-grace-nursery-primary-school"
+
+        "St. Mary's Academy"
+        -> "st-marys-academy"
+
+        "Royal & Great School"
+        -> "royal-great-school"
+
+        "ABC   International School"
+        -> "abc-international-school"
     """
-    return (
-        name.lower()
-        .replace("&", "")
-        .replace(",", "")
-        .replace(".", "")
-        .replace("'", "")
-        .replace(" ", "-")
-    )
+    if not name:
+        return ""
+
+    # Normalize Unicode characters.
+    value = unicodedata.normalize("NFKD", name)
+
+    # Remove accents/diacritics.
+    value = value.encode("ascii", "ignore").decode("ascii")
+
+    # Convert to lowercase.
+    value = value.lower().strip()
+
+    # Convert slash, backslash and ampersand to spaces.
+    value = re.sub(r"[/\\&]+", " ", value)
+
+    # Remove apostrophes.
+    value = value.replace("'", "")
+
+    # Replace all remaining non-alphanumeric characters with spaces.
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+
+    # Convert whitespace to single hyphens.
+    value = re.sub(r"\s+", "-", value)
+
+    # Remove leading/trailing hyphens.
+    value = value.strip("-")
+
+    return value
 
 
 def generate_code() -> str:
@@ -160,14 +194,16 @@ class AdminService:
         """
         Generate a unique school slug.
 
-        Example:
-
+        Examples:
             abia-international-school
             abia-international-school-2
             abia-international-school-3
-        """
 
+        """
         base = slugify(school_name)
+
+        if not base:
+            raise ValueError("School name cannot generate a valid slug.")
 
         slug = base
         counter = 2
