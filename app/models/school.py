@@ -193,7 +193,7 @@ class School(Base, UUIDMixin, TimestampMixin):
         back_populates="school",
         cascade="all, delete-orphan",
     )
-    """ facilities: Mapped[list["SchoolFacility"]] = relationship(
+    facilities: Mapped[list["SchoolFacility"]] = relationship(
         "SchoolFacility",
         back_populates="school",
         cascade="all, delete-orphan",
@@ -212,4 +212,4 @@ class School(Base, UUIDMixin, TimestampMixin):
         "SchoolAdmission",
         back_populates="school",
         cascade="all, delete-orphan",
-    ) """
+    )

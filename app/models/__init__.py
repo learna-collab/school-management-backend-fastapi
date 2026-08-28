@@ -25,6 +25,10 @@ from .result_record import ResultRecord
 from .result_summary import ResultSummary
 from .school import School
 from .school_academic_period import SchoolAcademicPeriod
+from .school_admission import SchoolAdmission
+from .school_facility import SchoolFacility
+from .school_gallery import SchoolGallery
+from .school_program import SchoolProgram
 from .student import StudentProfile
 from .subject import Subject
 from .subject_template import SubjectTemplate
@@ -62,6 +66,10 @@ __all__ = [
     "ResultSummary",
     "School",
     "SchoolAcademicPeriod",
+    "SchoolAdmission",
+    "SchoolFacility",
+    "SchoolGallery",
+    "SchoolProgram",
     "StudentEnrollment",
     "StudentParent",
     "StudentProfile",

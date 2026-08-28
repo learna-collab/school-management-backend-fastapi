@@ -1,7 +1,9 @@
 import itertools
 import secrets
 import string
+from io import BytesIO
 
+from openpyxl import load_workbook
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.school import School
@@ -901,3 +903,406 @@ class AdminService:
         except Exception:
             await db.rollback()
             raise
+
+    async def import_schools_from_excel(
+        self,
+        db: AsyncSession,
+        file,
+    ):
+        """
+        Import schools and their primary school admins from Excel.
+
+        Expected columns:
+
+            School Name
+            State
+            Address / LGA
+            Admin First Name
+            Admin Last Name
+            Phone Number
+            Generated Email (placeholder)
+            Source No. (optional)
+
+        Each valid row creates:
+
+            1. School
+            2. Primary SCHOOL_ADMIN
+            3. UserCredential
+
+        Invalid rows are skipped and reported.
+
+        IMPORTANT:
+        Each Excel row uses its own SAVEPOINT so a failed row
+        does not roll back previously successful rows.
+        """
+
+        # =================================================
+        # READ EXCEL
+        # =================================================
+
+        contents = await file.read()
+
+        try:
+            workbook = load_workbook(
+                filename=BytesIO(contents),
+                data_only=True,
+            )
+        except Exception:
+            raise ValueError("Invalid Excel file. Please upload a valid .xlsx file.")
+
+        worksheet = workbook.active
+
+        # =================================================
+        # READ HEADERS
+        # =================================================
+
+        headers = []
+
+        for cell in worksheet[1]:
+            value = cell.value
+
+            if value is None:
+                headers.append("")
+            else:
+                headers.append(str(value).strip())
+
+        header_map = {
+            header.lower(): index for index, header in enumerate(headers) if header
+        }
+
+        required_columns = [
+            "school name",
+            "state",
+            "address / lga",
+            "admin first name",
+            "admin last name",
+            "phone number",
+        ]
+
+        missing_columns = [
+            column for column in required_columns if column not in header_map
+        ]
+
+        if missing_columns:
+            raise ValueError(
+                "Missing required Excel columns: " + ", ".join(missing_columns)
+            )
+
+        # =================================================
+        # HELPERS
+        # =================================================
+
+        def get_value(row, column_name):
+            index = header_map.get(column_name.lower())
+
+            if index is None:
+                return None
+
+            if index >= len(row):
+                return None
+
+            value = row[index]
+
+            if value is None:
+                return None
+
+            value = str(value).strip()
+
+            return value or None
+
+        # =================================================
+        # RESULTS
+        # =================================================
+
+        imported = []
+        skipped = []
+
+        processed_rows = 0
+
+        # =================================================
+        # PROCESS ROWS
+        # =================================================
+
+        for excel_row_number, row in enumerate(
+            worksheet.iter_rows(
+                min_row=2,
+                values_only=True,
+            ),
+            start=2,
+        ):
+            # ---------------------------------------------
+            # IGNORE COMPLETELY EMPTY ROWS
+            # ---------------------------------------------
+
+            if not any(value is not None and str(value).strip() for value in row):
+                continue
+
+            processed_rows += 1
+
+            # ---------------------------------------------
+            # READ VALUES
+            # ---------------------------------------------
+
+            school_name = get_value(
+                row,
+                "School Name",
+            )
+
+            state = get_value(
+                row,
+                "State",
+            )
+
+            address = get_value(
+                row,
+                "Address / LGA",
+            )
+
+            first_name = get_value(
+                row,
+                "Admin First Name",
+            )
+
+            last_name = get_value(
+                row,
+                "Admin Last Name",
+            )
+
+            phone = get_value(
+                row,
+                "Phone Number",
+            )
+
+            email = get_value(
+                row,
+                "Generated Email (placeholder)",
+            )
+
+            source_no = get_value(
+                row,
+                "Source No.",
+            )
+
+            # ---------------------------------------------
+            # VALIDATE REQUIRED DATA
+            # ---------------------------------------------
+
+            missing = []
+
+            if not school_name:
+                missing.append("School Name")
+
+            if not state:
+                missing.append("State")
+
+            if not address:
+                missing.append("Address / LGA")
+
+            if not first_name:
+                missing.append("Admin First Name")
+
+            if not last_name:
+                missing.append("Admin Last Name")
+
+            if not phone:
+                missing.append("Phone Number")
+
+            if missing:
+                skipped.append(
+                    {
+                        "row": excel_row_number,
+                        "source_no": source_no,
+                        "school": school_name,
+                        "reason": ("Missing required fields: " + ", ".join(missing)),
+                    }
+                )
+
+                continue
+
+            # ---------------------------------------------
+            # GENERATE EMAIL
+            # ---------------------------------------------
+
+            if not email:
+                email = (
+                    f"{first_name.lower().strip()}."
+                    f"{last_name.lower().strip()}"
+                    "@schoolmail.example"
+                )
+
+            # ---------------------------------------------
+            # CHECK EXISTING SCHOOL
+            # ---------------------------------------------
+
+            existing_school = await self.school_repo.get_by_name(
+                db,
+                school_name,
+            )
+
+            if existing_school:
+                skipped.append(
+                    {
+                        "row": excel_row_number,
+                        "source_no": source_no,
+                        "school": school_name,
+                        "reason": "School already exists.",
+                    }
+                )
+
+                continue
+
+            # =================================================
+            # CREATE ROW SAVEPOINT
+            # =================================================
+
+            try:
+                async with db.begin_nested():
+                    # -----------------------------------------
+                    # GENERATE UNIQUE SLUG
+                    # -----------------------------------------
+
+                    slug = await self._generate_unique_slug(
+                        db=db,
+                        school_name=school_name,
+                    )
+
+                    # -----------------------------------------
+                    # GENERATE SCHOOL CODE
+                    # -----------------------------------------
+
+                    code = generate_code()
+
+                    # -----------------------------------------
+                    # CREATE SCHOOL
+                    # -----------------------------------------
+
+                    school = School(
+                        name=school_name,
+                        slug=slug,
+                        code=code,
+                        phone=phone,
+                        email=email,
+                        website=None,
+                        whatsapp_number=None,
+                        state=state,
+                        address=address,
+                        description=None,
+                        is_active=True,
+                    )
+
+                    db.add(school)
+
+                    await db.flush()
+
+                    # -----------------------------------------
+                    # GENERATE USERNAME
+                    # -----------------------------------------
+
+                    username = await self._generate_unique_username(
+                        db=db,
+                        school_name=school_name,
+                    )
+
+                    # -----------------------------------------
+                    # GENERATE PASSWORD
+                    # -----------------------------------------
+
+                    password = generate_password()
+
+                    # -----------------------------------------
+                    # CREATE ADMIN
+                    # -----------------------------------------
+
+                    admin = User(
+                        first_name=first_name,
+                        last_name=last_name,
+                        username=username,
+                        email=email,
+                        password_hash=hash_password(password),
+                        role=UserRole.SCHOOL_ADMIN,
+                        school_id=school.id,
+                        profile_completed=True,
+                    )
+
+                    db.add(admin)
+
+                    await db.flush()
+
+                    # -----------------------------------------
+                    # CREATE CREDENTIAL
+                    # -----------------------------------------
+
+                    credential = UserCredential(
+                        school_id=school.id,
+                        user_id=admin.id,
+                        username=username,
+                        password=password,
+                    )
+
+                    db.add(credential)
+
+                    await db.flush()
+
+                # =================================================
+                # SAVEPOINT SUCCESSFUL
+                # =================================================
+
+                imported.append(
+                    {
+                        "row": excel_row_number,
+                        "source_no": source_no,
+                        "school": school_name,
+                        "username": username,
+                        "password": password,
+                    }
+                )
+
+            except Exception as exc:
+                # =================================================
+                # ONLY THIS ROW IS ROLLED BACK
+                # =================================================
+
+                reason = str(exc)
+
+                # Clean up ugly database errors
+                if "duplicate key" in reason.lower():
+                    reason = (
+                        "Duplicate value detected. "
+                        "The school, username, email, code, or another "
+                        "unique field already exists."
+                    )
+
+                skipped.append(
+                    {
+                        "row": excel_row_number,
+                        "source_no": source_no,
+                        "school": school_name,
+                        "reason": reason,
+                    }
+                )
+
+                continue
+
+        # =================================================
+        # COMMIT ALL SUCCESSFUL ROWS
+        # =================================================
+
+        try:
+            await db.commit()
+
+        except Exception as exc:
+            await db.rollback()
+
+            raise ValueError(f"Failed to commit imported schools: {str(exc)}")
+
+        # =================================================
+        # SUMMARY
+        # =================================================
+
+        return {
+            "total_rows": processed_rows,
+            "imported_count": len(imported),
+            "skipped_count": len(skipped),
+            "imported": imported,
+            "skipped": skipped,
+        }

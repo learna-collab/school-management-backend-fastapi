@@ -1,9 +1,7 @@
-from app.services.directory.school_service import (
-    DirectorySchoolService,
-)
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.deps import DBSession
+from app.services.directory.directory_service import DirectorySchoolService
 from app.services.directory.program_service import (
     SchoolProgramService,
 )

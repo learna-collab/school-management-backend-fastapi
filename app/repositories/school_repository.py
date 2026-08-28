@@ -6,6 +6,17 @@ from app.models.user import User, UserRole
 
 
 class SchoolRepository:
+    async def get_by_name(
+        self,
+        db,
+        name: str,
+    ):
+        result = await db.execute(
+            select(School).where(func.lower(School.name) == name.lower())
+        )
+
+        return result.scalar_one_or_none()
+
     # =====================================================
     # CREATE
     # =====================================================

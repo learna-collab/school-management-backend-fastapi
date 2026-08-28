@@ -1,7 +1,7 @@
 from io import BytesIO
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,63 @@ service = AdminService()
 # =====================================================
 # GET SCHOOLS
 # =====================================================
+
+# =====================================================
+# IMPORT SCHOOLS FROM EXCEL
+# =====================================================
+
+
+@router.post("/schools/import")
+async def import_schools(
+    file: UploadFile = File(...),
+    db: Annotated[
+        AsyncSession,
+        Depends(get_db),
+    ] = None,
+    _: RequireSuperAdmin = None,
+):
+    # -------------------------------------------------
+    # CHECK FILE TYPE
+    # -------------------------------------------------
+
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="No file was uploaded.",
+        )
+
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .xlsx Excel files are supported.",
+        )
+
+    # -------------------------------------------------
+    # IMPORT
+    # -------------------------------------------------
+
+    try:
+        result = await service.import_schools_from_excel(
+            db=db,
+            file=file,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to import schools.",
+        )
+
+    return {
+        "message": "School import completed.",
+        **result,
+    }
 
 
 @router.get("/schools")
