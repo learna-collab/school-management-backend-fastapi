@@ -59,6 +59,8 @@ class SchoolRepository:
         self,
         db,
         search: str | None = None,
+        state: str | None = None,
+        location: str | None = None,
         page: int = 1,
         per_page: int = 50,
     ):
@@ -68,9 +70,7 @@ class SchoolRepository:
             .order_by(School.name)
         )
 
-        # -----------------------------------------
-        # SEARCH
-        # -----------------------------------------
+        # Search
         if search:
             query = query.where(
                 or_(
@@ -80,6 +80,14 @@ class SchoolRepository:
                     School.phone.ilike(f"%{search}%"),
                 )
             )
+
+        # State
+        if state:
+            query = query.where(School.state.ilike(state))
+
+        # Location
+        if location:
+            query = query.where(School.address.ilike(f"%{location}%"))
 
         # -----------------------------------------
         # TOTAL

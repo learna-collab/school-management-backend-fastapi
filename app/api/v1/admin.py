@@ -89,12 +89,16 @@ async def get_schools(
     db: DBSession,
     _: RequireSuperAdmin,
     search: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    location: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=50, ge=1, le=100),
 ):
     return await service.get_schools(
         db=db,
         search=search,
+        state=state,
+        location=location,
         page=page,
         per_page=per_page,
     )

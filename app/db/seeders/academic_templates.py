@@ -86,6 +86,11 @@ PRIMARY_SUBJECTS = [
     "CCA",
     "Verbal Reasoning",
     "Quantitative Reasoning",
+    # New subjects
+    "Pre-Vocational Studies",
+    "Basic Digital Literacy",
+    "Physical and Health Education",
+    "Nigerian History",
 ]
 
 
@@ -100,6 +105,11 @@ SECONDARY_SUBJECTS = [
     "Commerce",
     "Agricultural Science",
     "ICT",
+    # New subjects
+    "Pre-Vocational Studies",
+    "Basic Digital Literacy",
+    "Social and Citizenship Studies",
+    "Nigerian History",
 ]
 
 
@@ -180,6 +190,7 @@ async def get_or_create_subject(
         select(SubjectTemplate).where(
             SubjectTemplate.academic_template_id == template.id,
             SubjectTemplate.name == name,
+            SubjectTemplate.level == level,
         )
     )
 
@@ -195,7 +206,6 @@ async def get_or_create_subject(
     )
 
     db.add(subject)
-
     await db.flush()
 
     return subject

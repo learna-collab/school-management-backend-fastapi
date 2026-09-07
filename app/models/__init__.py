@@ -1,5 +1,6 @@
 from .academic_session import AcademicSession
 from .academic_template import AcademicTemplate
+from .admission_enquiry import AdmissionEnquiry
 from .attendance_record import AttendanceRecord
 from .attendance_sheet import AttendanceSheet
 from .blog_post import BlogPost
@@ -43,6 +44,7 @@ __all__ = [
     "AcademicLevel",
     "AcademicSession",
     "AcademicTemplate",
+    "AdmissionEnquiry",
     "AttendanceRecord",
     "AttendanceSheet",
     "BlogPost",
