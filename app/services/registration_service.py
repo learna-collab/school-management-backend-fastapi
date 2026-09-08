@@ -93,12 +93,35 @@ class RegistrationService:
 
         return f"{prefix}-{highest_number + 1:06d}"
 
-    def generate_password(self, length: int = 10):
+    def generate_password(
+        self,
+        first_name: str,
+        last_name: str,
+        length: int = 10,
+    ) -> str:
+        # Keep letters only
+        first = re.sub(r"[^A-Za-z]", "", first_name)
+        last = re.sub(r"[^A-Za-z]", "", last_name)
+
+        # Capitalize names consistently
+        first = first.capitalize()
+        last = last.capitalize()
+
+        # Combine the names
+        name_part = first + last
+
+        # Limit the name portion so the password doesn't become too long
+        name_part = name_part[:6]
+
+        # Only letters and numbers
         alphabet = string.ascii_letters + string.digits
 
-        password = "".join(secrets.choice(alphabet) for _ in range(length))
+        # Generate the remaining characters randomly
+        remaining_length = max(length - len(name_part), 4)
 
-        return password
+        random_part = "".join(secrets.choice(alphabet) for _ in range(remaining_length))
+
+        return name_part + random_part
 
     # =====================================================
     # COMMON USER CREATION
@@ -110,6 +133,8 @@ class RegistrationService:
         school_id,
         role,
         email,
+        first_name,
+        last_name,
     ):
         school = await self.school_service.get_by_id(
             db,
@@ -150,7 +175,10 @@ class RegistrationService:
         # Generate password
         # ---------------------------------------
 
-        password = self.generate_password()
+        password = self.generate_password(
+            first_name=first_name,
+            last_name=last_name,
+        )
 
         # ---------------------------------------
         # Create user
@@ -214,6 +242,8 @@ class RegistrationService:
             school_id=school_id,
             role="STUDENT",
             email=payload.email,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
         )
 
         await self.profile_service.create_profile(
@@ -263,6 +293,8 @@ class RegistrationService:
             school_id=school_id,
             role="TEACHER",
             email=payload.email,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
         )
 
         await self.profile_service.create_profile(
@@ -300,6 +332,8 @@ class RegistrationService:
             school_id=school_id,
             role="PARENT",
             email=payload.email,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
         )
 
         await self.profile_service.create_profile(

@@ -14,9 +14,11 @@ from app.db.base import (
 class AcademicLevel(str, PyEnum):
     __slots__ = ()
 
+    PRE_NURSERY = "PRE_NURSERY"
     NURSERY = "NURSERY"
     PRIMARY = "PRIMARY"
-    SECONDARY = "SECONDARY"
+    JUNIOR_SECONDARY = "JUNIOR_SECONDARY"
+    SENIOR_SECONDARY = "SENIOR_SECONDARY"
 
 
 class Class(
