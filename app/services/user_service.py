@@ -1,6 +1,7 @@
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.user_repository import UserRepository
 from app.services.profile_service import ProfileService
+from app.utils.helper import hash_password
 
 
 class UserService:
@@ -11,6 +12,7 @@ class UserService:
     # =====================================
     # CREATE USER + PROFILE
     # =====================================
+
     async def create_user_with_profile(
         self,
         db,
@@ -35,6 +37,34 @@ class UserService:
 
         return user
 
+    # =====================================
+    # CREATE VENDOR USER
+    # =====================================
+
+    async def create_vendor_user(
+        self,
+        db,
+        email: str,
+        password: str,
+        username: str,
+    ):
+        user = User(
+            email=email,
+            password_hash=hash_password(password),
+            role=UserRole.VENDOR,
+            school_id=None,
+            username=username,
+            profile_completed=False,
+        )
+
+        user = await self.repo.create(db, user)
+
+        return user
+
+    # =====================================
+    # GET SCHOOL BY SLUG
+    # =====================================
+
     async def get_school_by_slug(
         self,
         db,
@@ -48,22 +78,49 @@ class UserService:
     # =====================================
     # GET USER BY EMAIL
     # =====================================
-    async def get_by_email(self, db, email: str):
-        return await self.repo.get_by_email(db, email)
+
+    async def get_by_email(
+        self,
+        db,
+        email: str,
+    ):
+        return await self.repo.get_by_email(
+            db,
+            email,
+        )
 
     # =====================================
     # GET USER BY ID
     # =====================================
-    async def get_by_id(self, db, user_id: str):
-        return await self.repo.get_by_id(db, user_id)
 
-    async def get_by_username(self, db, username: str):
-        return await self.repo.get_by_username(db, username)
+    async def get_by_id(
+        self,
+        db,
+        user_id: str,
+    ):
+        return await self.repo.get_by_id(
+            db,
+            user_id,
+        )
+
+    async def get_by_username(
+        self,
+        db,
+        username: str,
+    ):
+        return await self.repo.get_by_username(
+            db,
+            username,
+        )
 
     # =====================================
     # GET ALL USERS
     # =====================================
-    async def get_all_users(self, db):
+
+    async def get_all_users(
+        self,
+        db,
+    ):
         return await self.repo.get_all(db)
 
     async def get_by_school_slug_and_username(
@@ -81,13 +138,24 @@ class UserService:
     # =====================================
     # DELETE USER
     # =====================================
-    async def delete_user(self, db, user_id: str):
-        user = await self.repo.get_by_id(db, user_id)
+
+    async def delete_user(
+        self,
+        db,
+        user_id: str,
+    ):
+        user = await self.repo.get_by_id(
+            db,
+            user_id,
+        )
 
         if not user:
             return None
 
-        await self.repo.delete(db, user)
+        await self.repo.delete(
+            db,
+            user,
+        )
 
         return True
 

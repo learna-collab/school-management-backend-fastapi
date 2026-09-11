@@ -185,6 +185,21 @@ async def require_student_or_school_admin(
     return user
 
 
+# =====================================================
+# VENDOR ONLY
+# =====================================================
+
+
+def require_vendor(user: Annotated[User, Depends(get_current_user)]):
+    if user.role != UserRole.VENDOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vendor access required",
+        )
+    return user
+
+
+RequireVendor = Annotated[User, Depends(require_vendor)]
 RequireStudentOrSchoolAdmin = Annotated[User, Depends(require_student_or_school_admin)]
 
 

@@ -26,6 +26,7 @@ class UserRole(str, Enum):
     TEACHER = "TEACHER"
     STUDENT = "STUDENT"
     PARENT = "PARENT"
+    VENDOR = "VENDOR"
 
 
 class User(Base, UUIDMixin, TimestampMixin, TenantMixin):
@@ -117,6 +118,11 @@ class User(Base, UUIDMixin, TimestampMixin, TenantMixin):
         "ClassTeacher",
         back_populates="teacher",
         cascade="all, delete-orphan",
+    )
+    vendor = relationship(
+        "Vendor",
+        back_populates="user",
+        uselist=False,
     )
 
     __table_args__ = (

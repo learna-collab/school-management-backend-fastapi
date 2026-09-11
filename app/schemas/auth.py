@@ -1,6 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 from app.schemas.user import UserPublic
+
+
+class VendorLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
 
 
 class LoginRequest(BaseModel):
@@ -12,6 +17,7 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
     email: str
+
 
 class ForgotPasswordRequest(BaseModel):
     email: str

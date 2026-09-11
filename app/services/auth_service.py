@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.models.password_reset import PasswordResetToken
 from app.models.refresh_token import RefreshToken
+from app.models.user import UserRole
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.services.email_service import email_service
 from app.services.user_service import UserService
@@ -29,6 +30,7 @@ class AuthService:
         password: str,
     ):
         school_slug, actual_username = username.split("_", 1)
+
         school = await self.user_service.get_school_by_slug(
             db,
             school_slug,
@@ -59,7 +61,7 @@ class AuthService:
             username=actual_username,
             email=email,
             password=hash_password(password),
-            role="STUDENT",  # default role
+            role="STUDENT",
             school_id=school.id,
         )
 
@@ -76,9 +78,9 @@ class AuthService:
         # -----------------------------------
         # SCHOOL ADMIN / SUPER ADMIN
         # login without school slug
+        #
         # Example:
-        # superadmin
-        # schooladmin
+        # superadmin@example.com
         # -----------------------------------
         if "@" in username:
             user = await self.user_service.get_by_email(
@@ -94,6 +96,7 @@ class AuthService:
 
         # -----------------------------------
         # STUDENTS / TEACHERS / PARENTS
+        #
         # Example:
         # lerna_john
         # -----------------------------------
@@ -115,9 +118,62 @@ class AuthService:
         ):
             return None
 
-        # -----------------------------------
-        # CREATE TOKENS
-        # -----------------------------------
+        return await self._create_auth_result(
+            db=db,
+            user=user,
+        )
+
+    async def vendor_login(
+        self,
+        db,
+        email: str,
+        password: str,
+    ):
+        """
+        Authenticate a vendor using email and password.
+
+        Vendors are normal LERNA users with:
+            role = VENDOR
+            school_id = None
+        """
+
+        user = await self.user_service.get_by_email(
+            db,
+            email.strip().lower(),
+        )
+
+        if not user:
+            return None
+
+        # A vendor must authenticate through the vendor login endpoint.
+        if user.role != UserRole.VENDOR:
+            return None
+
+        # Verify password using the same mechanism as normal login.
+        if not verify_password(
+            password,
+            user.password_hash,
+        ):
+            return None
+
+        return await self._create_auth_result(
+            db=db,
+            user=user,
+        )
+
+    async def _create_auth_result(
+        self,
+        db,
+        user,
+    ):
+        """
+        Create access + refresh tokens and return the.
+
+        authenticated user payload.
+
+        This is shared by school authentication and vendor
+        authentication so both use the same token system.
+        """
         access_token = create_access_token(
             {
                 "sub": str(user.id),
@@ -158,11 +214,19 @@ class AuthService:
             },
         }
 
-    async def forgot_password(self, db, email: str):
-        user = await self.user_service.get_by_email(db, email)
+    async def forgot_password(
+        self,
+        db,
+        email: str,
+    ):
+        user = await self.user_service.get_by_email(
+            db,
+            email,
+        )
 
         if not user:
-            return True  # avoid email enumeration attacks
+            # Avoid email enumeration attacks.
+            return True
 
         token = secrets.token_urlsafe(32)
 
@@ -185,10 +249,16 @@ class AuthService:
 
         return True
 
-    async def reset_password(self, db, token: str, new_password: str):
+    async def reset_password(
+        self,
+        db,
+        token: str,
+        new_password: str,
+    ):
         result = await db.execute(
             """
-            SELECT * FROM password_reset_tokens
+            SELECT *
+            FROM password_reset_tokens
             WHERE token = :token
             """,
             {"token": token},
@@ -213,7 +283,9 @@ class AuthService:
         if not user:
             return False
 
-        user.password = hash_password(new_password)
+        user.password_hash = hash_password(
+            new_password,
+        )
 
         reset.used = True
 
@@ -252,7 +324,7 @@ class AuthService:
             {
                 "sub": str(user.id),
                 "role": user.role,
-                "school_id": str(user.school_id),
+                "school_id": (str(user.school_id) if user.school_id else None),
             }
         )
 

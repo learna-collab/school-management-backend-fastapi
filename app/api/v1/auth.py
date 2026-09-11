@@ -1,19 +1,23 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import CurrentUser
+from app.core.deps import CurrentUser, DBSession
 from app.db.database import get_db
+from app.models.user import UserRole
 from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
     RegisterRequest,
     RegisterResponse,
     ResetPasswordRequest,
+    VendorLoginRequest,
 )
 from app.schemas.user import UserOut
+from app.schemas.vendor_register import VendorRegisterRequest, VendorRegisterResponse
 from app.services.auth_service import AuthService
+from app.services.user_service import userservice
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -23,9 +27,8 @@ auth_service = AuthService()
 # =====================================================
 # REGISTER USER (INVITE-BASED ONLY)
 # =====================================================
-@router.post(
-    "/register",
-)
+
+
 @router.post("/register")
 async def register(
     response: Response,
@@ -59,6 +62,75 @@ async def register(
         )
 
     # 🍪 set refresh token cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=result["refresh_token"],
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=60 * 60 * 24 * 30,
+    )
+
+    return {
+        "access_token": result["access_token"],
+        "user": result["user"],
+    }
+
+
+@router.post(
+    "/vendor/register",
+    response_model=VendorRegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_vendor(
+    payload: VendorRegisterRequest,
+    db: DBSession,
+):
+    """
+    Register a brand-new vendor account.
+
+    This creates a normal LERNA user with role=VENDOR.
+    The vendor profile/store is created later from the vendor dashboard.
+    """
+    existing = await userservice.get_by_email(db, payload.email)
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already exists",
+        )
+
+    await userservice.create_vendor_user(
+        db=db,
+        email=payload.email,
+        password=payload.password,
+        username=payload.first_name.lower() + "_" + payload.last_name.lower(),
+    )
+
+    return VendorRegisterResponse(
+        message="Vendor account created successfully",
+        email=payload.email,
+    )
+
+
+@router.post("/vendor/login")
+async def vendor_login(
+    payload: VendorLoginRequest,
+    response: Response,
+    db: DBSession,
+):
+    result = await auth_service.vendor_login(
+        db=db,
+        email=payload.email,
+        password=payload.password,
+    )
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid vendor credentials",
+        )
+
     response.set_cookie(
         key="refresh_token",
         value=result["refresh_token"],

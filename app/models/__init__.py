@@ -1,3 +1,13 @@
+from app.models.marketplace import (
+    DigitalProduct,
+    ListingImage,
+    MarketplaceCategory,
+    MarketplaceListing,
+    MarketplaceService,
+    PhysicalProduct,
+    Vendor,
+)
+
 from .academic_session import AcademicSession
 from .academic_template import AcademicTemplate
 from .admission_enquiry import AdmissionEnquiry
@@ -57,10 +67,16 @@ __all__ = [
     "ClassSubject",
     "ClassTeacher",
     "ClassTemplate",
+    "DigitalProduct",
     "Lesson",
     "LessonALF",
+    "ListingImage",
+    "MarketplaceCategory",
+    "MarketplaceListing",
+    "MarketplaceService",
     "ParentProfile",
     "PasswordResetToken",
+    "PhysicalProduct",
     "RefreshToken",
     "ResultApproval",
     "ResultBatch",
@@ -83,4 +99,5 @@ __all__ = [
     "Term",
     "User",
     "UserCredential",
+    "Vendor",
 ]

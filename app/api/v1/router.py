@@ -1,5 +1,9 @@
 from fastapi import APIRouter
 
+from app.api.v1.marketplace.admin import router as marketplace_admin_router
+from app.api.v1.marketplace.public import router as marketplace_public_router
+from app.api.v1.marketplace.vendor import router as marketplace_vendor_router
+
 from . import (
     admin,
     admin_registration,
@@ -58,3 +62,8 @@ api_router.include_router(admin_registration.router)
 api_router.include_router(class_setup_router.router)
 api_router.include_router(cbt.router)
 api_router.include_router(cbt_batch_upload.router)
+
+api_router.include_router(marketplace_admin_router)
+api_router.include_router(marketplace_vendor_router)
+
+api_router.include_router(marketplace_public_router)
