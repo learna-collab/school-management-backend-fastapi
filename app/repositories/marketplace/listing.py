@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.marketplace.listing import (
     ListingStatus,
@@ -11,6 +12,16 @@ from app.models.marketplace.listing import (
 
 
 class ListingRepository:
+    def _listing_options(self):
+        return (
+            selectinload(MarketplaceListing.vendor),
+            selectinload(MarketplaceListing.category),
+            selectinload(MarketplaceListing.images),
+            selectinload(MarketplaceListing.physical),
+            selectinload(MarketplaceListing.service),
+            selectinload(MarketplaceListing.digital),
+        )
+
     async def create(
         self,
         db: AsyncSession,
@@ -18,7 +29,14 @@ class ListingRepository:
     ) -> MarketplaceListing:
         db.add(listing)
         await db.flush()
-        return listing
+
+        result = await db.execute(
+            select(MarketplaceListing)
+            .options(*self._listing_options())
+            .where(MarketplaceListing.id == listing.id)
+        )
+
+        return result.scalar_one()
 
     async def save(
         self,
@@ -27,7 +45,14 @@ class ListingRepository:
     ) -> MarketplaceListing:
         db.add(listing)
         await db.flush()
-        return listing
+
+        result = await db.execute(
+            select(MarketplaceListing)
+            .options(*self._listing_options())
+            .where(MarketplaceListing.id == listing.id)
+        )
+
+        return result.scalar_one()
 
     async def get_by_id(
         self,
@@ -35,7 +60,9 @@ class ListingRepository:
         listing_id: UUID,
     ) -> MarketplaceListing | None:
         result = await db.execute(
-            select(MarketplaceListing).where(MarketplaceListing.id == listing_id)
+            select(MarketplaceListing)
+            .options(*self._listing_options())
+            .where(MarketplaceListing.id == listing_id)
         )
 
         return result.scalar_one_or_none()
@@ -46,7 +73,9 @@ class ListingRepository:
         slug: str,
     ) -> MarketplaceListing | None:
         result = await db.execute(
-            select(MarketplaceListing).where(MarketplaceListing.slug == slug)
+            select(MarketplaceListing)
+            .options(*self._listing_options())
+            .where(MarketplaceListing.slug == slug)
         )
 
         return result.scalar_one_or_none()
@@ -69,6 +98,7 @@ class ListingRepository:
     ) -> list[MarketplaceListing]:
         result = await db.execute(
             select(MarketplaceListing)
+            .options(*self._listing_options())
             .where(MarketplaceListing.vendor_id == vendor_id)
             .order_by(MarketplaceListing.created_at.desc())
         )
@@ -81,8 +111,10 @@ class ListingRepository:
         listing_type: ListingType | None = None,
         category_id: UUID | None = None,
     ) -> list[MarketplaceListing]:
-        query = select(MarketplaceListing).where(
-            MarketplaceListing.status == ListingStatus.ACTIVE
+        query = (
+            select(MarketplaceListing)
+            .options(*self._listing_options())
+            .where(MarketplaceListing.status == ListingStatus.ACTIVE)
         )
 
         if listing_type:
@@ -104,6 +136,7 @@ class ListingRepository:
     ) -> list[MarketplaceListing]:
         result = await db.execute(
             select(MarketplaceListing)
+            .options(*self._listing_options())
             .where(
                 MarketplaceListing.vendor_id == vendor_id,
                 MarketplaceListing.status == ListingStatus.ACTIVE,

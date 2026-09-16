@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.core.deps import DBSession, RequireVendor
 from app.models.marketplace.vendor import VendorStatus
@@ -22,6 +22,7 @@ from app.schemas.marketplace.vendor import (
     VendorResponse,
     VendorUpdate,
 )
+from app.services.cloudinary_service import cloudinary_service
 from app.services.marketplace.listing import ListingService
 from app.services.marketplace.vendor import VendorService
 
@@ -67,21 +68,29 @@ async def get_own_vendor_listing(
     listing_id: UUID,
 ):
     """Get a listing only if it belongs to the authenticated vendor."""
+
     vendor = await get_vendor(
         db,
         user,
     )
+
+    print("DEBUG VENDOR ID:", vendor.id)
+    print("DEBUG LISTING ID:", listing_id)
 
     listing = await listing_service.get_by_id(
         db,
         listing_id,
     )
 
+    print("DEBUG LISTING:", listing)
+
     if not listing:
         raise HTTPException(
             status_code=404,
-            detail="Listing not found",
+            detail=f"Listing not found: {listing_id}",
         )
+
+    print("DEBUG LISTING VENDOR ID:", listing.vendor_id)
 
     if listing.vendor_id != vendor.id:
         raise HTTPException(
@@ -188,7 +197,7 @@ async def create_listing(
 
     return await listing_service.create(
         db=db,
-        vendor=vendor,
+        vendor_id=vendor.id,
         data=payload,
     )
 
@@ -347,10 +356,12 @@ async def add_digital_product(
     response_model=ListingImageResponse,
 )
 async def add_listing_image(
-    listing_id: UUID,
-    payload: ListingImageCreate,
     db: DBSession,
     user: RequireVendor,
+    listing_id: UUID,
+    file: UploadFile = File(...),
+    is_primary: bool = Form(False),
+    sort_order: int = Form(0),
 ):
     _, listing = await get_own_vendor_listing(
         db,
@@ -358,10 +369,28 @@ async def add_listing_image(
         listing_id,
     )
 
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only image files are allowed.",
+        )
+
+    upload_result = await cloudinary_service.upload_file(
+        file=file,
+        folder=f"marketplace/listings/{listing_id}",
+        resource_type="image",
+    )
+
+    image_data = ListingImageCreate(
+        image_url=upload_result["url"],
+        is_primary=is_primary,
+        sort_order=sort_order,
+    )
+
     return await listing_service.add_image(
         db=db,
         listing=listing,
-        data=payload,
+        data=image_data,
     )
 
 

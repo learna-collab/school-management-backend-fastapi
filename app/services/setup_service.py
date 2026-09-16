@@ -29,13 +29,26 @@ class AcademicSetupService:
     Academic Setup Service.
 
     Responsible for:
-
     • Loading academic templates
     • Configuring a school's academic structure
+    • Updating an existing academic structure
     • Returning configured setup
     • Managing classes
     • Managing subjects
     • Managing class-subject mappings
+
+    IMPORTANT:
+    Reconfiguration NEVER deletes existing Class or Subject records.
+
+    Classes and subjects may already be referenced by:
+    • student enrollments
+    • result records
+    • attendance
+    • lessons
+    • other historical/operational records
+
+    Therefore update_setup() only synchronizes the current
+    ClassSubject mappings and reuses existing classes/subjects.
     """
 
     def __init__(self):
@@ -115,7 +128,19 @@ class AcademicSetupService:
         db: AsyncSession,
         school_id: UUID,
     ) -> SchoolAcademicSetupResponse:
-        school_classes = await self.repository.get_school_classes(
+        """
+        Return the school's CURRENT academic configuration.
+
+        IMPORTANT:
+        Classes and subjects are preserved in the database even after
+        a reset or reconfiguration because they may be referenced by
+        historical/operational records.
+
+        Therefore, a class is considered part of the current academic
+        setup only when it has at least one current ClassSubject mapping.
+        """
+
+        school_classes = await self.repository.get_school_classes_with_mappings(
             db,
             school_id,
         )
@@ -199,11 +224,15 @@ class AcademicSetupService:
                     detail="Academic template not found.",
                 )
 
-            # --------------------------------------------------
+                # --------------------------------------------------
             # Prevent configuring twice
+            #
+            # IMPORTANT:
+            # Historical classes may still exist after a reset.
+            # Only current ClassSubject mappings determine whether
+            # the academic setup is currently configured.
             # --------------------------------------------------
-
-            existing = await self.repository.get_school_classes(
+            existing = await self.repository.get_school_classes_with_mappings(
                 db,
                 school_id,
             )
@@ -224,23 +253,16 @@ class AcademicSetupService:
             )
 
             # --------------------------------------------------
-            # Build lookup dictionaries
+            # Build lookup
             # --------------------------------------------------
 
             selected_lookup = self._build_selected_lookup(
                 payload,
             )
-            # -----------------------------------------
-            # Build lookup tables
-            # -----------------------------------------
 
-            selected_lookup = self._build_selected_lookup(
-                payload,
-            )
-
-            # -----------------------------------------
-            # Clone template classes
-            # -----------------------------------------
+            # --------------------------------------------------
+            # Create template classes
+            # --------------------------------------------------
 
             created_classes = await self._clone_classes(
                 db=db,
@@ -249,9 +271,9 @@ class AcademicSetupService:
                 selected_lookup=selected_lookup,
             )
 
-            # -----------------------------------------
-            # Clone template subjects
-            # -----------------------------------------
+            # --------------------------------------------------
+            # Create template subjects
+            # --------------------------------------------------
 
             created_subjects = await self._clone_subjects(
                 db=db,
@@ -260,9 +282,9 @@ class AcademicSetupService:
                 selected_lookup=selected_lookup,
             )
 
-            # -----------------------------------------
-            # Create template class-subject mappings
-            # -----------------------------------------
+            # --------------------------------------------------
+            # Create template mappings
+            # --------------------------------------------------
 
             mappings = await self._build_class_subject_mappings(
                 db=db,
@@ -273,9 +295,9 @@ class AcademicSetupService:
                 subject_lookup=created_subjects,
             )
 
-            # -----------------------------------------
+            # --------------------------------------------------
             # Create custom classes
-            # -----------------------------------------
+            # --------------------------------------------------
 
             custom_classes = await self._create_custom_classes(
                 db=db,
@@ -283,9 +305,9 @@ class AcademicSetupService:
                 payload=payload,
             )
 
-            # -----------------------------------------
+            # --------------------------------------------------
             # Create custom subjects
-            # -----------------------------------------
+            # --------------------------------------------------
 
             custom_subjects = await self._create_custom_subjects(
                 db=db,
@@ -295,11 +317,12 @@ class AcademicSetupService:
                 custom_classes=custom_classes,
             )
 
-            # -----------------------------------------
-            # Commit transaction
-            # -----------------------------------------
+            # --------------------------------------------------
+            # Commit
+            # --------------------------------------------------
 
             await db.commit()
+
             setup = await self.get_school_setup(
                 db=db,
                 school_id=school_id,
@@ -307,17 +330,19 @@ class AcademicSetupService:
 
             return AcademicSetupSummaryResponse(
                 setup=setup,
-                classes_created=len(created_classes) + len(custom_classes),
-                subjects_created=len(created_subjects) + len(custom_subjects),
+                classes_created=(len(created_classes) + len(custom_classes)),
+                subjects_created=(len(created_subjects) + len(custom_subjects)),
                 mappings_created=len(mappings),
                 message="Academic setup completed successfully.",
             )
+
         except HTTPException:
             await db.rollback()
             raise
 
         except Exception as exc:
             await db.rollback()
+
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(exc),
@@ -343,9 +368,9 @@ class AcademicSetupService:
         class_names: set[str] = set()
 
         for school_class in payload.classes:
-            # ----------------------------------------
+            # --------------------------------------------------
             # Duplicate class names
-            # ----------------------------------------
+            # --------------------------------------------------
 
             class_name = school_class.name.strip().lower()
 
@@ -357,9 +382,9 @@ class AcademicSetupService:
 
             class_names.add(class_name)
 
-            # ----------------------------------------
-            # Template class validation
-            # ----------------------------------------
+            # --------------------------------------------------
+            # Template class
+            # --------------------------------------------------
 
             if school_class.template_class_id:
                 if school_class.template_class_id not in template_lookup:
@@ -375,7 +400,6 @@ class AcademicSetupService:
                 }
 
                 subject_names: set[str] = set()
-
                 enabled_subjects = 0
 
                 for subject in school_class.subjects:
@@ -415,9 +439,9 @@ class AcademicSetupService:
                         ),
                     )
 
-            # ----------------------------------------
-            # Custom class validation
-            # ----------------------------------------
+            # --------------------------------------------------
+            # Custom class
+            # --------------------------------------------------
 
             else:
                 if not school_class.subjects:
@@ -429,7 +453,6 @@ class AcademicSetupService:
                     )
 
                 subject_names: set[str] = set()
-
                 enabled_subjects = 0
 
                 for subject in school_class.subjects:
@@ -493,7 +516,7 @@ class AcademicSetupService:
         return lookup
 
     # ==========================================================
-    # CLONE TEMPLATE CLASSES
+    # CLONE / REUSE TEMPLATE CLASSES
     # ==========================================================
 
     async def _clone_classes(
@@ -503,7 +526,7 @@ class AcademicSetupService:
         template,
         selected_lookup,
     ):
-        school_classes: list[Class] = []
+        school_classes: dict[UUID, Class] = {}
 
         for template_class in template.class_templates:
             selected = selected_lookup.get(
@@ -516,28 +539,53 @@ class AcademicSetupService:
             if not selected["enabled"]:
                 continue
 
-            school_class = Class(
-                school_id=school_id,
-                template_class_id=template_class.id,
-                name=selected["name"],
-                level=selected["level"],
-                sort_order=template_class.sort_order,
-                is_custom=False,
+            # --------------------------------------------------
+            # IMPORTANT:
+            # Reuse an existing class if one already exists
+            # for this school/template class.
+            # --------------------------------------------------
+
+            school_class = await self.repository.get_class_by_template_id(
+                db,
+                school_id,
+                template_class.id,
             )
 
-            school_classes.append(
-                school_class,
-            )
+            if school_class is None:
+                school_class = Class(
+                    school_id=school_id,
+                    template_class_id=template_class.id,
+                    name=selected["name"],
+                    level=selected["level"],
+                    sort_order=template_class.sort_order,
+                    is_custom=False,
+                )
 
-        await self.repository.bulk_create_classes(
-            db,
-            school_classes,
-        )
+                await self.repository.create_class(
+                    db,
+                    school_class,
+                )
 
-        return {cls.template_class_id: cls for cls in school_classes}
+            else:
+                # Update configuration fields without
+                # changing the primary key.
+
+                school_class.name = selected["name"]
+                school_class.level = selected["level"]
+                school_class.sort_order = template_class.sort_order
+                school_class.is_custom = False
+
+                await self.repository.update_class(
+                    db,
+                    school_class,
+                )
+
+            school_classes[template_class.id] = school_class
+
+        return school_classes
 
     # ==========================================================
-    # CLONE TEMPLATE SUBJECTS
+    # CLONE / REUSE TEMPLATE SUBJECTS
     # ==========================================================
 
     async def _clone_subjects(
@@ -548,6 +596,11 @@ class AcademicSetupService:
         selected_lookup,
     ):
         subjects: dict[UUID, Subject] = {}
+
+        # Determine which template subjects are currently
+        # selected anywhere in the configuration.
+
+        selected_subjects: dict[UUID, dict] = {}
 
         for template_class in template.class_templates:
             class_selection = selected_lookup.get(
@@ -573,25 +626,52 @@ class AcademicSetupService:
                 if not subject_selection["enabled"]:
                     continue
 
-                # -----------------------------------------
-                # Prevent duplicate subjects across classes
-                # -----------------------------------------
+                # Keep the first selected version of a subject.
+                if template_subject.id not in selected_subjects:
+                    selected_subjects[template_subject.id] = {
+                        "name": subject_selection["name"],
+                        "code": template_subject.code,
+                    }
 
-                if template_subject.id in subjects:
-                    continue
+        # ------------------------------------------------------
+        # Reuse or create subjects
+        # ------------------------------------------------------
 
-                subjects[template_subject.id] = Subject(
+        for template_subject_id, selection in selected_subjects.items():
+            school_subject = await self.repository.get_subject_by_template_id(
+                db,
+                school_id,
+                template_subject_id,
+            )
+
+            if school_subject is None:
+                school_subject = Subject(
                     school_id=school_id,
-                    template_subject_id=template_subject.id,
-                    name=subject_selection["name"],
-                    code=template_subject.code,
+                    template_subject_id=template_subject_id,
+                    name=selection["name"],
+                    code=selection["code"],
                     is_custom=False,
                 )
 
-        await self.repository.bulk_create_subjects(
-            db,
-            list(subjects.values()),
-        )
+                await self.repository.create_subject(
+                    db,
+                    school_subject,
+                )
+
+            else:
+                # Preserve the subject ID so historical
+                # result_records remain valid.
+
+                school_subject.name = selection["name"]
+                school_subject.code = selection["code"]
+                school_subject.is_custom = False
+
+                await self.repository.update_subject(
+                    db,
+                    school_subject,
+                )
+
+            subjects[template_subject_id] = school_subject
 
         return subjects
 
@@ -621,7 +701,12 @@ class AcademicSetupService:
             if not class_selection["enabled"]:
                 continue
 
-            school_class = class_lookup[template_class.id]
+            school_class = class_lookup.get(
+                template_class.id,
+            )
+
+            if school_class is None:
+                continue
 
             for relation in template_class.subjects:
                 template_subject = relation.subject_template
@@ -636,7 +721,12 @@ class AcademicSetupService:
                 if not subject_selection["enabled"]:
                     continue
 
-                school_subject = subject_lookup[template_subject.id]
+                school_subject = subject_lookup.get(
+                    template_subject.id,
+                )
+
+                if school_subject is None:
+                    continue
 
                 mappings.append(
                     ClassSubject(
@@ -646,15 +736,16 @@ class AcademicSetupService:
                     )
                 )
 
-        await self.repository.bulk_create_mappings(
-            db,
-            mappings,
-        )
+        if mappings:
+            await self.repository.bulk_create_mappings(
+                db,
+                mappings,
+            )
 
         return mappings
 
     # ==========================================================
-    # CREATE CUSTOM CLASSES
+    # CREATE / REUSE CUSTOM CLASSES
     # ==========================================================
 
     async def _create_custom_classes(
@@ -663,37 +754,59 @@ class AcademicSetupService:
         school_id: UUID,
         payload: ConfigureAcademicSetupRequest,
     ) -> dict[str, Class]:
-        custom_classes: list[Class] = []
+        custom_classes: dict[str, Class] = {}
 
         for school_class in payload.classes:
-            # Skip template classes
+            # Skip template classes.
             if school_class.template_class_id is not None:
                 continue
 
             if not school_class.enabled:
                 continue
 
-            custom_classes.append(
-                Class(
+            class_name = school_class.name.strip()
+
+            # --------------------------------------------------
+            # Reuse existing custom class by school + name.
+            # --------------------------------------------------
+
+            existing_class = await self.repository.get_class_by_name(
+                db,
+                school_id,
+                class_name,
+            )
+
+            if existing_class is None:
+                existing_class = Class(
                     school_id=school_id,
                     template_class_id=None,
-                    name=school_class.name,
+                    name=class_name,
                     level=school_class.level,
                     sort_order=school_class.sort_order,
                     is_custom=True,
                 )
-            )
 
-        if custom_classes:
-            await self.repository.bulk_create_classes(
-                db,
-                custom_classes,
-            )
+                await self.repository.create_class(
+                    db,
+                    existing_class,
+                )
 
-        return {cls.name.lower(): cls for cls in custom_classes}
+            else:
+                existing_class.level = school_class.level
+                existing_class.sort_order = school_class.sort_order
+                existing_class.is_custom = True
+
+                await self.repository.update_class(
+                    db,
+                    existing_class,
+                )
+
+            custom_classes[class_name.lower()] = existing_class
+
+        return custom_classes
 
     # ==========================================================
-    # CREATE CUSTOM SUBJECTS
+    # CREATE / REUSE CUSTOM SUBJECTS
     # ==========================================================
 
     async def _create_custom_subjects(
@@ -711,9 +824,9 @@ class AcademicSetupService:
             if not school_class.enabled:
                 continue
 
-            # -----------------------------------------
+            # --------------------------------------------------
             # Resolve school class
-            # -----------------------------------------
+            # --------------------------------------------------
 
             if school_class.template_class_id:
                 school_db_class = class_lookup.get(
@@ -722,22 +835,21 @@ class AcademicSetupService:
 
             else:
                 school_db_class = custom_classes.get(
-                    school_class.name.lower(),
+                    school_class.name.strip().lower(),
                 )
 
             if school_db_class is None:
                 continue
 
-            # -----------------------------------------
+            # --------------------------------------------------
             # Process custom subjects
-            # -----------------------------------------
+            # --------------------------------------------------
 
             for subject in school_class.subjects:
                 if not subject.enabled:
                     continue
 
                 # Skip template subjects.
-                # They were already created in _clone_subjects()
                 if subject.template_subject_id:
                     continue
 
@@ -746,22 +858,44 @@ class AcademicSetupService:
                 school_subject = created_subjects.get(key)
 
                 if school_subject is None:
-                    school_subject = Subject(
-                        school_id=school_id,
-                        template_subject_id=None,
-                        name=subject.name,
-                        code=subject.code,
-                        is_custom=True,
+                    # --------------------------------------------------
+                    # Reuse an existing custom subject by name.
+                    # --------------------------------------------------
+
+                    school_subject = await self.repository.get_subject_by_name(
+                        db,
+                        school_id,
+                        subject.name.strip(),
                     )
 
-                    db.add(school_subject)
+                    if school_subject is None:
+                        school_subject = Subject(
+                            school_id=school_id,
+                            template_subject_id=None,
+                            name=subject.name.strip(),
+                            code=subject.code,
+                            is_custom=True,
+                        )
 
-                    await db.flush()
+                        await self.repository.create_subject(
+                            db,
+                            school_subject,
+                        )
+
+                    else:
+                        school_subject.code = subject.code
+                        school_subject.is_custom = True
+
+                        await self.repository.update_subject(
+                            db,
+                            school_subject,
+                        )
 
                     created_subjects[key] = school_subject
-                # -----------------------------------------
-                # Create Class-Subject mapping
-                # -----------------------------------------
+
+                # --------------------------------------------------
+                # Create current mapping
+                # --------------------------------------------------
 
                 mappings.append(
                     ClassSubject(
@@ -770,10 +904,6 @@ class AcademicSetupService:
                         subject_id=school_subject.id,
                     )
                 )
-
-        # -----------------------------------------
-        # Save mappings
-        # -----------------------------------------
 
         if mappings:
             await self.repository.bulk_create_mappings(
@@ -890,14 +1020,29 @@ class AcademicSetupService:
             class_id,
         )
 
-        await self.repository.delete_class(
-            db,
-            school_class,
-        )
+        try:
+            await self.repository.delete_class(
+                db,
+                school_class,
+            )
 
-        await db.commit()
+            await db.commit()
 
-        return {"message": "Class deleted successfully."}
+        except Exception as exc:
+            await db.rollback()
+
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "This class cannot be deleted because it is "
+                    "already referenced by other academic records. "
+                    "Remove those references first."
+                ),
+            ) from exc
+
+        return {
+            "message": "Class deleted successfully.",
+        }
 
     # ==========================================================
     # SUBJECT CRUD
@@ -993,14 +1138,29 @@ class AcademicSetupService:
             subject_id,
         )
 
-        await self.repository.delete_subject(
-            db,
-            subject,
-        )
+        try:
+            await self.repository.delete_subject(
+                db,
+                subject,
+            )
 
-        await db.commit()
+            await db.commit()
 
-        return {"message": "Subject deleted successfully."}
+        except Exception as exc:
+            await db.rollback()
+
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "This subject cannot be deleted because it is "
+                    "already referenced by other academic records. "
+                    "Remove those references first."
+                ),
+            ) from exc
+
+        return {
+            "message": "Subject deleted successfully.",
+        }
 
     # ==========================================================
     # ASSIGN SUBJECTS TO CLASS
@@ -1030,12 +1190,11 @@ class AcademicSetupService:
                 detail="Invalid class.",
             )
 
-        await self.repository.remove_class_subjects(
-            db,
-            class_id,
-        )
+        # --------------------------------------------------
+        # Verify all subjects before changing mappings.
+        # --------------------------------------------------
 
-        mappings = []
+        subjects = []
 
         for subject_id in payload.subject_ids:
             subject = await self.repository.get_subject(
@@ -1055,18 +1214,33 @@ class AcademicSetupService:
                     detail="Invalid subject.",
                 )
 
+            subjects.append(subject)
+
+        # --------------------------------------------------
+        # Replace mappings for this class.
+        # --------------------------------------------------
+
+        await self.repository.remove_class_subjects(
+            db,
+            class_id,
+        )
+
+        mappings = []
+
+        for subject in subjects:
             mappings.append(
                 ClassSubject(
                     school_id=school_id,
                     class_id=class_id,
-                    subject_id=subject_id,
+                    subject_id=subject.id,
                 )
             )
 
-        await self.repository.bulk_create_mappings(
-            db,
-            mappings,
-        )
+        if mappings:
+            await self.repository.bulk_create_mappings(
+                db,
+                mappings,
+            )
 
         await db.commit()
 
@@ -1086,24 +1260,154 @@ class AcademicSetupService:
         school_id: UUID,
     ):
         """
-        Rebuild the school's academic structure from scratch.
+        Update the school's academic configuration.
 
-        The frontend sends the complete structure every time Save is clicked,
-        so we simply clear the existing setup and recreate it.
+        IMPORTANT:
+
+        This does NOT delete classes or subjects.
+
+        Existing classes and subjects may be referenced by:
+        • student_enrollments
+        • result_records
+        • attendance
+        • lessons
+        • other historical records
+
+        Therefore:
+
+        1. Existing Class records are reused.
+        2. Existing Subject records are reused.
+        3. New records are created when necessary.
+        4. ClassSubject mappings are rebuilt.
+        5. Historical records remain untouched.
         """
+
         try:
-            await self.repository.clear_school_setup(
+            # --------------------------------------------------
+            # Load template
+            # --------------------------------------------------
+
+            template = await self.repository.get_template(
+                db,
+                payload.academic_template_id,
+            )
+
+            if template is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Academic template not found.",
+                )
+
+            # --------------------------------------------------
+            # Validate payload
+            # --------------------------------------------------
+
+            self._validate_request(
+                template,
+                payload,
+            )
+
+            # --------------------------------------------------
+            # Remove ONLY current class-subject relationships.
+            #
+            # Do NOT remove classes.
+            # Do NOT remove subjects.
+            # --------------------------------------------------
+
+            await self.repository.delete_school_mappings(
                 db,
                 school_id,
             )
 
             await db.flush()
 
-            return await self.configure(
+            # --------------------------------------------------
+            # Build lookup
+            # --------------------------------------------------
+
+            selected_lookup = self._build_selected_lookup(
+                payload,
+            )
+
+            # --------------------------------------------------
+            # Reuse/create template classes
+            # --------------------------------------------------
+
+            class_lookup = await self._sync_template_classes(
                 db=db,
-                payload=payload,
                 school_id=school_id,
-                allow_existing=True,
+                template=template,
+                selected_lookup=selected_lookup,
+            )
+
+            # --------------------------------------------------
+            # Reuse/create template subjects
+            # --------------------------------------------------
+
+            subject_lookup = await self._sync_template_subjects(
+                db=db,
+                school_id=school_id,
+                template=template,
+                selected_lookup=selected_lookup,
+            )
+
+            # --------------------------------------------------
+            # Rebuild template mappings
+            # --------------------------------------------------
+
+            template_mappings = await self._build_class_subject_mappings(
+                db=db,
+                school_id=school_id,
+                template=template,
+                selected_lookup=selected_lookup,
+                class_lookup=class_lookup,
+                subject_lookup=subject_lookup,
+            )
+
+            # --------------------------------------------------
+            # Reuse/create custom classes
+            # --------------------------------------------------
+
+            custom_classes = await self._sync_custom_classes(
+                db=db,
+                school_id=school_id,
+                payload=payload,
+            )
+
+            # --------------------------------------------------
+            # Reuse/create custom subjects and mappings
+            # --------------------------------------------------
+
+            custom_subjects = await self._sync_custom_subjects(
+                db=db,
+                school_id=school_id,
+                payload=payload,
+                class_lookup=class_lookup,
+                custom_classes=custom_classes,
+            )
+
+            # --------------------------------------------------
+            # Commit
+            # --------------------------------------------------
+
+            await db.commit()
+
+            setup = await self.get_school_setup(
+                db=db,
+                school_id=school_id,
+            )
+
+            return AcademicSetupSummaryResponse(
+                setup=setup,
+                classes_created=(
+                    len([cls for cls in class_lookup.values()]) + len(custom_classes)
+                ),
+                subjects_created=(
+                    len([subject for subject in subject_lookup.values()])
+                    + len(custom_subjects)
+                ),
+                mappings_created=(len(template_mappings)),
+                message="Academic setup updated successfully.",
             )
 
         except HTTPException:
@@ -1114,9 +1418,347 @@ class AcademicSetupService:
             await db.rollback()
 
             raise HTTPException(
-                status_code=500,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(exc),
             )
+
+    # ==========================================================
+    # SYNC TEMPLATE CLASSES
+    # ==========================================================
+
+    async def _sync_template_classes(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+        template,
+        selected_lookup,
+    ):
+        class_lookup: dict[UUID, Class] = {}
+
+        for template_class in template.class_templates:
+            selected = selected_lookup.get(
+                template_class.id,
+            )
+
+            if selected is None:
+                continue
+
+            if not selected["enabled"]:
+                continue
+
+            school_class = await self.repository.get_class_by_template_id(
+                db,
+                school_id,
+                template_class.id,
+            )
+
+            if school_class is None:
+                school_class = Class(
+                    school_id=school_id,
+                    template_class_id=template_class.id,
+                    name=selected["name"],
+                    level=selected["level"],
+                    sort_order=template_class.sort_order,
+                    is_custom=False,
+                )
+
+                await self.repository.create_class(
+                    db,
+                    school_class,
+                )
+
+            else:
+                school_class.name = selected["name"]
+                school_class.level = selected["level"]
+                school_class.sort_order = template_class.sort_order
+                school_class.is_custom = False
+
+                await self.repository.update_class(
+                    db,
+                    school_class,
+                )
+
+            class_lookup[template_class.id] = school_class
+
+        return class_lookup
+
+    # ==========================================================
+    # SYNC TEMPLATE SUBJECTS
+    # ==========================================================
+
+    async def _sync_template_subjects(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+        template,
+        selected_lookup,
+    ):
+        subject_lookup: dict[UUID, Subject] = {}
+
+        selected_subjects: dict[UUID, dict] = {}
+
+        for template_class in template.class_templates:
+            class_selection = selected_lookup.get(
+                template_class.id,
+            )
+
+            if class_selection is None:
+                continue
+
+            if not class_selection["enabled"]:
+                continue
+
+            for relation in template_class.subjects:
+                template_subject = relation.subject_template
+
+                selection = class_selection["subjects"].get(
+                    template_subject.id,
+                )
+
+                if selection is None:
+                    continue
+
+                if not selection["enabled"]:
+                    continue
+
+                if template_subject.id not in selected_subjects:
+                    selected_subjects[template_subject.id] = {
+                        "name": selection["name"],
+                        "code": template_subject.code,
+                    }
+
+        for template_subject_id, selection in selected_subjects.items():
+            school_subject = await self.repository.get_subject_by_template_id(
+                db,
+                school_id,
+                template_subject_id,
+            )
+
+            if school_subject is None:
+                school_subject = Subject(
+                    school_id=school_id,
+                    template_subject_id=template_subject_id,
+                    name=selection["name"],
+                    code=selection["code"],
+                    is_custom=False,
+                )
+
+                await self.repository.create_subject(
+                    db,
+                    school_subject,
+                )
+
+            else:
+                school_subject.name = selection["name"]
+                school_subject.code = selection["code"]
+                school_subject.is_custom = False
+
+                await self.repository.update_subject(
+                    db,
+                    school_subject,
+                )
+
+            subject_lookup[template_subject_id] = school_subject
+
+        return subject_lookup
+
+    # ==========================================================
+    # SYNC CUSTOM CLASSES
+    # ==========================================================
+
+    async def _sync_custom_classes(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+        payload: ConfigureAcademicSetupRequest,
+    ) -> dict[str, Class]:
+        custom_classes: dict[str, Class] = {}
+
+        for school_class in payload.classes:
+            if school_class.template_class_id is not None:
+                continue
+
+            if not school_class.enabled:
+                continue
+
+            class_name = school_class.name.strip()
+
+            existing_class = await self.repository.get_class_by_name(
+                db,
+                school_id,
+                class_name,
+            )
+
+            if existing_class is None:
+                existing_class = Class(
+                    school_id=school_id,
+                    template_class_id=None,
+                    name=class_name,
+                    level=school_class.level,
+                    sort_order=school_class.sort_order,
+                    is_custom=True,
+                )
+
+                await self.repository.create_class(
+                    db,
+                    existing_class,
+                )
+
+            else:
+                existing_class.level = school_class.level
+                existing_class.sort_order = school_class.sort_order
+                existing_class.is_custom = True
+
+                await self.repository.update_class(
+                    db,
+                    existing_class,
+                )
+
+            custom_classes[class_name.lower()] = existing_class
+
+        return custom_classes
+
+    # ==========================================================
+    # SYNC CUSTOM SUBJECTS
+    # ==========================================================
+
+    async def _sync_custom_subjects(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+        payload: ConfigureAcademicSetupRequest,
+        class_lookup: dict,
+        custom_classes: dict,
+    ) -> dict[str, Subject]:
+        custom_subjects: dict[str, Subject] = {}
+        mappings: list[ClassSubject] = []
+
+        for school_class in payload.classes:
+            if not school_class.enabled:
+                continue
+
+            # --------------------------------------------------
+            # Resolve class
+            # --------------------------------------------------
+
+            if school_class.template_class_id:
+                school_db_class = class_lookup.get(
+                    school_class.template_class_id,
+                )
+
+            else:
+                school_db_class = custom_classes.get(
+                    school_class.name.strip().lower(),
+                )
+
+            if school_db_class is None:
+                continue
+
+            # --------------------------------------------------
+            # Process custom subjects
+            # --------------------------------------------------
+
+            for subject in school_class.subjects:
+                if not subject.enabled:
+                    continue
+
+                if subject.template_subject_id:
+                    continue
+
+                key = subject.name.strip().lower()
+
+                school_subject = custom_subjects.get(key)
+
+                if school_subject is None:
+                    school_subject = await self.repository.get_subject_by_name(
+                        db,
+                        school_id,
+                        subject.name.strip(),
+                    )
+
+                    if school_subject is None:
+                        school_subject = Subject(
+                            school_id=school_id,
+                            template_subject_id=None,
+                            name=subject.name.strip(),
+                            code=subject.code,
+                            is_custom=True,
+                        )
+
+                        await self.repository.create_subject(
+                            db,
+                            school_subject,
+                        )
+
+                    else:
+                        school_subject.code = subject.code
+                        school_subject.is_custom = True
+
+                        await self.repository.update_subject(
+                            db,
+                            school_subject,
+                        )
+
+                    custom_subjects[key] = school_subject
+
+                mappings.append(
+                    ClassSubject(
+                        school_id=school_id,
+                        class_id=school_db_class.id,
+                        subject_id=school_subject.id,
+                    )
+                )
+
+        if mappings:
+            await self.repository.bulk_create_mappings(
+                db,
+                mappings,
+            )
+
+        return custom_subjects
+
+    # ==========================================================
+    # RESET SCHOOL SETUP
+    # ==========================================================
+
+    async def reset_setup(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+    ):
+        """
+        Reset the current academic configuration.
+
+        This intentionally removes ONLY ClassSubject mappings.
+
+        Classes and subjects are preserved because they may already
+        be referenced by historical/operational records.
+        """
+
+        try:
+            await self.repository.clear_school_setup(
+                db,
+                school_id,
+            )
+
+            await db.commit()
+
+        except Exception as exc:
+            await db.rollback()
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(exc),
+            )
+
+        return {
+            "message": "Academic setup mappings have been reset successfully.",
+            "configured": False,
+        }
+
+    # ==========================================================
+    # END
+    # ==========================================================
 
 
 academic_setup_service = AcademicSetupService()

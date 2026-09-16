@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, String, Text
+from sqlalchemy import Boolean, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
@@ -27,7 +27,8 @@ class MarketplaceCategory(Base, UUIDMixin, TimestampMixin):
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
-        default=True,
+        default=True,  # ORM default
+        server_default=text("true"),  # Database default
         nullable=False,
         index=True,
     )

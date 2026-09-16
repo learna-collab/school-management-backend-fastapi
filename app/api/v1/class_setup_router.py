@@ -88,6 +88,18 @@ async def update_school_setup(
     )
 
 
+@router.delete("/reset")
+async def reset_school_setup(
+    db: DBSession,
+    current_user: RequireSchoolAdmin,
+):
+    """Completely remove this school's academic setup."""
+    return await service.reset_setup(
+        db=db,
+        school_id=current_user.school_id,
+    )
+
+
 # ==========================================================
 # CLASS CRUD
 # ==========================================================
