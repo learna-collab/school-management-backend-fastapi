@@ -35,6 +35,28 @@ class AcademicSetupRepository:
         result = await db.execute(stmt)
         return result.scalars().unique().all()
 
+    async def get_all_template_classes(
+        self,
+        db: AsyncSession,
+    ):
+        stmt = (
+            select(ClassTemplate)
+            .options(
+                selectinload(ClassTemplate.subjects).selectinload(
+                    TemplateClassSubject.subject_template
+                )
+            )
+            .order_by(
+                ClassTemplate.level,
+                ClassTemplate.sort_order,
+                ClassTemplate.name,
+            )
+        )
+
+        result = await db.execute(stmt)
+
+        return result.scalars().unique().all()
+
     async def get_template(
         self,
         db: AsyncSession,
@@ -52,6 +74,32 @@ class AcademicSetupRepository:
 
         result = await db.execute(stmt)
         return result.unique().scalar_one_or_none()
+
+    async def get_template_classes(
+        self,
+        db: AsyncSession,
+        levels: list[str],
+    ):
+        stmt = (
+            select(ClassTemplate)
+            .where(
+                ClassTemplate.level.in_(levels),
+            )
+            .options(
+                selectinload(ClassTemplate.subjects).selectinload(
+                    TemplateClassSubject.subject_template
+                )
+            )
+            .order_by(
+                ClassTemplate.level,
+                ClassTemplate.sort_order,
+                ClassTemplate.name,
+            )
+        )
+
+        result = await db.execute(stmt)
+
+        return result.scalars().unique().all()
 
     # =====================================================
     # SCHOOL SETUP

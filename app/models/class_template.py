@@ -4,6 +4,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import (
     Mapped,
@@ -24,6 +25,18 @@ class ClassTemplate(
     TimestampMixin,
 ):
     __tablename__ = "class_templates"
+    __table_args__ = (
+        UniqueConstraint(
+            "academic_template_id",
+            "name",
+            name="uq_class_templates_template_name",
+        ),
+        UniqueConstraint(
+            "academic_template_id",
+            "sort_order",
+            name="uq_class_templates_template_sort_order",
+        ),
+    )
 
     academic_template_id: Mapped[UUID] = mapped_column(
         ForeignKey(

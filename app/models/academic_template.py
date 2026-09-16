@@ -1,4 +1,5 @@
 from sqlalchemy import Boolean, String
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
@@ -20,6 +21,12 @@ class AcademicTemplate(
     description: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
+    )
+
+    levels: Mapped[list[str]] = mapped_column(
+        ARRAY(String(50)),
+        default=list,
+        nullable=False,
     )
 
     is_active: Mapped[bool] = mapped_column(

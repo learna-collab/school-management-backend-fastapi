@@ -159,18 +159,18 @@ async def get_or_create_class(
     sort_order: int,
 ) -> ClassTemplate:
     """
-    Non-destructive.
+    One ClassTemplate per name + level globally.
 
-    Looks for the class ONLY inside the specified academic
-    template.
+    The academic_template_id is preserved on the ClassTemplate,
+    but it is NOT used to determine whether the class already exists.
 
     Existing ClassTemplate rows are never deleted or replaced.
     """
 
     result = await db.execute(
         select(ClassTemplate).where(
-            ClassTemplate.academic_template_id == template.id,
             ClassTemplate.name == name,
+            ClassTemplate.level == level,
         )
     )
 
@@ -188,6 +188,7 @@ async def get_or_create_class(
     )
 
     db.add(school_class)
+
     await db.flush()
 
     return school_class
@@ -200,9 +201,18 @@ async def get_or_create_subject(
     name: str,
     level: str,
 ) -> SubjectTemplate:
+    """
+    One SubjectTemplate per name + level globally.
+
+    The academic_template_id is preserved on the SubjectTemplate,
+    but it is NOT used to determine whether the subject already exists.
+
+    Existing SubjectTemplate rows are never deleted or replaced
+    by the seeder.
+    """
+
     result = await db.execute(
         select(SubjectTemplate).where(
-            SubjectTemplate.academic_template_id == template.id,
             SubjectTemplate.name == name,
             SubjectTemplate.level == level,
         )
@@ -221,6 +231,7 @@ async def get_or_create_subject(
     )
 
     db.add(subject)
+
     await db.flush()
 
     return subject

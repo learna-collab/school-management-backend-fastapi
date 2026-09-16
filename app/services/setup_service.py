@@ -38,6 +38,7 @@ class AcademicSetupService:
     • Managing class-subject mappings
 
     IMPORTANT:
+
     Reconfiguration NEVER deletes existing Class or Subject records.
 
     Classes and subjects may already be referenced by:
@@ -64,13 +65,31 @@ class AcademicSetupService:
     ) -> list[AcademicTemplateResponse]:
         templates = await self.repository.get_templates(db)
 
+        # ClassTemplate rows are globally unique by:
+        # (name, level)
+        #
+        # Therefore we cannot rely on:
+        # template.class_templates
+        #
+        # Instead, load all unique class templates and match them
+        # against the levels supported by each AcademicTemplate.
+        all_classes = await self.repository.get_all_template_classes(db)
+
         response: list[AcademicTemplateResponse] = []
 
         for template in templates:
             classes: list[ClassTemplateResponse] = []
 
+            template_levels = set(template.levels)
+
+            matching_classes = [
+                class_template
+                for class_template in all_classes
+                if class_template.level in template_levels
+            ]
+
             sorted_classes = sorted(
-                template.class_templates,
+                matching_classes,
                 key=lambda c: (
                     c.level,
                     c.sort_order,
@@ -132,6 +151,7 @@ class AcademicSetupService:
         Return the school's CURRENT academic configuration.
 
         IMPORTANT:
+
         Classes and subjects are preserved in the database even after
         a reset or reconfiguration because they may be referenced by
         historical/operational records.
@@ -224,14 +244,38 @@ class AcademicSetupService:
                     detail="Academic template not found.",
                 )
 
-                # --------------------------------------------------
+            # --------------------------------------------------
+            # IMPORTANT:
+            #
+            # ClassTemplate rows are globally unique by:
+            # (name, level)
+            #
+            # An AcademicTemplate can contain multiple levels.
+            #
+            # Example:
+            #
+            # Nursery, Primary & Secondary
+            #     -> NURSERY
+            #     -> PRIMARY
+            #     -> SECONDARY
+            #
+            # Therefore resolve classes by the template's levels,
+            # not through template.class_templates.
+            # --------------------------------------------------
+
+            template_classes = await self.repository.get_template_classes(
+                db=db,
+                levels=template.levels,
+            )
+
+            # --------------------------------------------------
             # Prevent configuring twice
             #
-            # IMPORTANT:
             # Historical classes may still exist after a reset.
             # Only current ClassSubject mappings determine whether
             # the academic setup is currently configured.
             # --------------------------------------------------
+
             existing = await self.repository.get_school_classes_with_mappings(
                 db,
                 school_id,
@@ -248,7 +292,7 @@ class AcademicSetupService:
             # --------------------------------------------------
 
             self._validate_request(
-                template,
+                template_classes,
                 payload,
             )
 
@@ -257,28 +301,28 @@ class AcademicSetupService:
             # --------------------------------------------------
 
             selected_lookup = self._build_selected_lookup(
-                payload,
+                payload=payload,
             )
 
             # --------------------------------------------------
-            # Create template classes
+            # Create/reuse template classes
             # --------------------------------------------------
 
             created_classes = await self._clone_classes(
                 db=db,
                 school_id=school_id,
-                template=template,
+                template_classes=template_classes,
                 selected_lookup=selected_lookup,
             )
 
             # --------------------------------------------------
-            # Create template subjects
+            # Create/reuse template subjects
             # --------------------------------------------------
 
             created_subjects = await self._clone_subjects(
                 db=db,
                 school_id=school_id,
-                template=template,
+                template_classes=template_classes,
                 selected_lookup=selected_lookup,
             )
 
@@ -289,7 +333,7 @@ class AcademicSetupService:
             mappings = await self._build_class_subject_mappings(
                 db=db,
                 school_id=school_id,
-                template=template,
+                template_classes=template_classes,
                 selected_lookup=selected_lookup,
                 class_lookup=created_classes,
                 subject_lookup=created_subjects,
@@ -346,7 +390,7 @@ class AcademicSetupService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(exc),
-            )
+            ) from exc
 
     # ==========================================================
     # VALIDATE REQUEST
@@ -354,7 +398,7 @@ class AcademicSetupService:
 
     def _validate_request(
         self,
-        template,
+        template_classes,
         payload: ConfigureAcademicSetupRequest,
     ) -> None:
         if not payload.classes:
@@ -363,7 +407,7 @@ class AcademicSetupService:
                 detail="At least one class must be selected.",
             )
 
-        template_lookup = {cls.id: cls for cls in template.class_templates}
+        template_lookup = {cls.id: cls for cls in template_classes}
 
         class_names: set[str] = set()
 
@@ -523,12 +567,12 @@ class AcademicSetupService:
         self,
         db: AsyncSession,
         school_id: UUID,
-        template,
+        template_classes,
         selected_lookup,
     ):
         school_classes: dict[UUID, Class] = {}
 
-        for template_class in template.class_templates:
+        for template_class in template_classes:
             selected = selected_lookup.get(
                 template_class.id,
             )
@@ -540,7 +584,6 @@ class AcademicSetupService:
                 continue
 
             # --------------------------------------------------
-            # IMPORTANT:
             # Reuse an existing class if one already exists
             # for this school/template class.
             # --------------------------------------------------
@@ -567,9 +610,6 @@ class AcademicSetupService:
                 )
 
             else:
-                # Update configuration fields without
-                # changing the primary key.
-
                 school_class.name = selected["name"]
                 school_class.level = selected["level"]
                 school_class.sort_order = template_class.sort_order
@@ -592,17 +632,17 @@ class AcademicSetupService:
         self,
         db: AsyncSession,
         school_id: UUID,
-        template,
+        template_classes,
         selected_lookup,
     ):
         subjects: dict[UUID, Subject] = {}
 
+        selected_subjects: dict[UUID, dict] = {}
+
         # Determine which template subjects are currently
         # selected anywhere in the configuration.
 
-        selected_subjects: dict[UUID, dict] = {}
-
-        for template_class in template.class_templates:
+        for template_class in template_classes:
             class_selection = selected_lookup.get(
                 template_class.id,
             )
@@ -660,7 +700,7 @@ class AcademicSetupService:
 
             else:
                 # Preserve the subject ID so historical
-                # result_records remain valid.
+                # result records remain valid.
 
                 school_subject.name = selection["name"]
                 school_subject.code = selection["code"]
@@ -683,14 +723,14 @@ class AcademicSetupService:
         self,
         db: AsyncSession,
         school_id: UUID,
-        template,
+        template_classes,
         selected_lookup,
         class_lookup,
         subject_lookup,
     ):
         mappings: list[ClassSubject] = []
 
-        for template_class in template.class_templates:
+        for template_class in template_classes:
             class_selection = selected_lookup.get(
                 template_class.id,
             )
@@ -832,7 +872,6 @@ class AcademicSetupService:
                 school_db_class = class_lookup.get(
                     school_class.template_class_id,
                 )
-
             else:
                 school_db_class = custom_classes.get(
                     school_class.name.strip().lower(),
@@ -946,9 +985,9 @@ class AcademicSetupService:
             await db.rollback()
 
             raise HTTPException(
-                status_code=500,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(exc),
-            )
+            ) from exc
 
     async def update_class(
         self,
@@ -964,13 +1003,13 @@ class AcademicSetupService:
 
         if not school_class:
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Class not found.",
             )
 
         if school_class.school_id != school_id:
             raise HTTPException(
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="You cannot update this class.",
             )
 
@@ -1005,13 +1044,13 @@ class AcademicSetupService:
 
         if not school_class:
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Class not found.",
             )
 
         if school_class.school_id != school_id:
             raise HTTPException(
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="You cannot delete this class.",
             )
 
@@ -1085,13 +1124,13 @@ class AcademicSetupService:
 
         if not subject:
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Subject not found.",
             )
 
         if subject.school_id != school_id:
             raise HTTPException(
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="You cannot update this subject.",
             )
 
@@ -1123,13 +1162,13 @@ class AcademicSetupService:
 
         if not subject:
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Subject not found.",
             )
 
         if subject.school_id != school_id:
             raise HTTPException(
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="You cannot delete this subject.",
             )
 
@@ -1180,13 +1219,13 @@ class AcademicSetupService:
 
         if not school_class:
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Class not found.",
             )
 
         if school_class.school_id != school_id:
             raise HTTPException(
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid class.",
             )
 
@@ -1204,13 +1243,13 @@ class AcademicSetupService:
 
             if not subject:
                 raise HTTPException(
-                    status_code=404,
+                    status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Subject {subject_id} not found.",
                 )
 
             if subject.school_id != school_id:
                 raise HTTPException(
-                    status_code=403,
+                    status_code=status.HTTP_403_FORBIDDEN,
                     detail="Invalid subject.",
                 )
 
@@ -1280,6 +1319,18 @@ class AcademicSetupService:
         3. New records are created when necessary.
         4. ClassSubject mappings are rebuilt.
         5. Historical records remain untouched.
+
+        IMPORTANT TEMPLATE RULE:
+
+        AcademicTemplate does not own unique ClassTemplate rows anymore.
+
+        ClassTemplate is globally unique by:
+            (name, level)
+
+        Therefore template.class_templates MUST NOT be used here.
+
+        Instead, the template's persisted levels are used to resolve
+        all applicable ClassTemplate rows.
         """
 
         try:
@@ -1299,11 +1350,38 @@ class AcademicSetupService:
                 )
 
             # --------------------------------------------------
+            # IMPORTANT:
+            #
+            # Resolve all globally unique ClassTemplate rows
+            # belonging to the levels supported by this
+            # AcademicTemplate.
+            #
+            # Example:
+            #
+            # Nursery, Primary & Secondary
+            #
+            # template.levels =
+            #     ["NURSERY", "PRIMARY", "SECONDARY"]
+            #
+            # Therefore this gets:
+            #
+            # Nursery 1-3
+            # Primary 1-6
+            # JSS1-3
+            # SS1-3
+            # --------------------------------------------------
+
+            template_classes = await self.repository.get_template_classes(
+                db=db,
+                levels=template.levels,
+            )
+
+            # --------------------------------------------------
             # Validate payload
             # --------------------------------------------------
 
             self._validate_request(
-                template,
+                template_classes,
                 payload,
             )
 
@@ -1326,7 +1404,7 @@ class AcademicSetupService:
             # --------------------------------------------------
 
             selected_lookup = self._build_selected_lookup(
-                payload,
+                payload=payload,
             )
 
             # --------------------------------------------------
@@ -1336,7 +1414,7 @@ class AcademicSetupService:
             class_lookup = await self._sync_template_classes(
                 db=db,
                 school_id=school_id,
-                template=template,
+                template_classes=template_classes,
                 selected_lookup=selected_lookup,
             )
 
@@ -1347,7 +1425,7 @@ class AcademicSetupService:
             subject_lookup = await self._sync_template_subjects(
                 db=db,
                 school_id=school_id,
-                template=template,
+                template_classes=template_classes,
                 selected_lookup=selected_lookup,
             )
 
@@ -1358,7 +1436,7 @@ class AcademicSetupService:
             template_mappings = await self._build_class_subject_mappings(
                 db=db,
                 school_id=school_id,
-                template=template,
+                template_classes=template_classes,
                 selected_lookup=selected_lookup,
                 class_lookup=class_lookup,
                 subject_lookup=subject_lookup,
@@ -1399,14 +1477,9 @@ class AcademicSetupService:
 
             return AcademicSetupSummaryResponse(
                 setup=setup,
-                classes_created=(
-                    len([cls for cls in class_lookup.values()]) + len(custom_classes)
-                ),
-                subjects_created=(
-                    len([subject for subject in subject_lookup.values()])
-                    + len(custom_subjects)
-                ),
-                mappings_created=(len(template_mappings)),
+                classes_created=(len(class_lookup) + len(custom_classes)),
+                subjects_created=(len(subject_lookup) + len(custom_subjects)),
+                mappings_created=len(template_mappings),
                 message="Academic setup updated successfully.",
             )
 
@@ -1420,7 +1493,7 @@ class AcademicSetupService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(exc),
-            )
+            ) from exc
 
     # ==========================================================
     # SYNC TEMPLATE CLASSES
@@ -1430,12 +1503,12 @@ class AcademicSetupService:
         self,
         db: AsyncSession,
         school_id: UUID,
-        template,
+        template_classes,
         selected_lookup,
     ):
         class_lookup: dict[UUID, Class] = {}
 
-        for template_class in template.class_templates:
+        for template_class in template_classes:
             selected = selected_lookup.get(
                 template_class.id,
             )
@@ -1490,14 +1563,14 @@ class AcademicSetupService:
         self,
         db: AsyncSession,
         school_id: UUID,
-        template,
+        template_classes,
         selected_lookup,
     ):
         subject_lookup: dict[UUID, Subject] = {}
 
         selected_subjects: dict[UUID, dict] = {}
 
-        for template_class in template.class_templates:
+        for template_class in template_classes:
             class_selection = selected_lookup.get(
                 template_class.id,
             )
@@ -1749,16 +1822,16 @@ class AcademicSetupService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(exc),
-            )
+            ) from exc
 
         return {
             "message": "Academic setup mappings have been reset successfully.",
             "configured": False,
         }
 
-    # ==========================================================
-    # END
-    # ==========================================================
 
+# ==========================================================
+# SERVICE INSTANCE
+# ==========================================================
 
 academic_setup_service = AcademicSetupService()
