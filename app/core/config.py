@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     domain: str
     frontend_url: str
     secret_key: str
-    paystack_secret_key: str
+    PAYSTACK_SECRET_KEY: str
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

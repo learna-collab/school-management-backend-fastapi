@@ -1,6 +1,10 @@
 from fastapi import APIRouter
 
 from app.api.v1.marketplace.admin import router as marketplace_admin_router
+from app.api.v1.marketplace.cart import router as cart_router
+from app.api.v1.marketplace.checkout import router as checkout_router
+from app.api.v1.marketplace.order_router import router as marketplace_order_router
+from app.api.v1.marketplace.payment import router as payment_router
 from app.api.v1.marketplace.public import router as marketplace_public_router
 from app.api.v1.marketplace.vendor import router as marketplace_vendor_router
 
@@ -67,3 +71,7 @@ api_router.include_router(marketplace_admin_router)
 api_router.include_router(marketplace_vendor_router)
 
 api_router.include_router(marketplace_public_router)
+api_router.include_router(marketplace_order_router)
+api_router.include_router(cart_router)
+api_router.include_router(checkout_router)
+api_router.include_router(payment_router)

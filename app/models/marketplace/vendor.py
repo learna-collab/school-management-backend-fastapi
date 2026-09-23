@@ -98,3 +98,17 @@ class Vendor(Base, UUIDMixin, TimestampMixin):
         back_populates="vendor",
         cascade="all, delete-orphan",
     )
+    orders = relationship(
+        "MarketplaceOrder",
+        back_populates="vendor",
+    )
+
+    wallet = relationship(
+        "MarketplaceWallet",
+        uselist=False,
+    )
+
+    payouts = relationship(
+        "MarketplacePayout",
+        back_populates="vendor",
+    )
