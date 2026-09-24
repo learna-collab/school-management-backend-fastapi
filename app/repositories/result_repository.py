@@ -1,13 +1,15 @@
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.class_teacher import ClassTeacher
 from app.models.result_approval import ResultApproval
 from app.models.result_batch import ResultBatch
 from app.models.result_record import ResultRecord
 from app.models.result_summary import ResultSummary
+from app.models.user import User
 
 
 class ResultRepository:
@@ -647,9 +649,14 @@ class ResultRepository:
         result = await db.execute(
             select(ResultBatch)
             .options(
+                # Batch creator / result-entry teacher
+                selectinload(ResultBatch.creator),
+                # Result records
                 selectinload(ResultBatch.records).selectinload(ResultRecord.subject),
                 selectinload(ResultBatch.records).selectinload(ResultRecord.student),
+                # Summaries
                 selectinload(ResultBatch.summaries),
+                # Approval history
                 selectinload(ResultBatch.approvals).selectinload(ResultApproval.actor),
             )
             .where(ResultBatch.id == batch_id)
@@ -732,6 +739,72 @@ class ResultRepository:
         )
 
         return list(result.scalars().all())
+
+    async def get_batch_report_meta(
+        self,
+        db: AsyncSession,
+        batch_id: UUID,
+    ):
+        batch = await self.get_batch_details(
+            db=db,
+            batch_id=batch_id,
+        )
+
+        if not batch:
+            return None
+
+        # =====================================================
+        # TEACHER WHO ENTERED / CREATED THE RESULT BATCH
+        # =====================================================
+        #
+        # A class can have multiple teachers assigned to it.
+        # We therefore do NOT use ClassTeacher here.
+        #
+        # ResultBatch.created_by identifies the user who
+        # created the result batch.
+        #
+
+        class_teacher = batch.creator
+
+        # =====================================================
+        # PRINCIPAL / SCHOOL ADMIN
+        # =====================================================
+
+        principal_result = await db.execute(
+            select(User)
+            .where(
+                User.school_id == batch.school_id,
+                User.role == "SCHOOL_ADMIN",
+            )
+            .order_by(User.created_at.asc())
+        )
+
+        principal = principal_result.scalar_one_or_none()
+
+        # =====================================================
+        # CLASS STATISTICS
+        # =====================================================
+
+        stats_result = await db.execute(
+            select(
+                func.count(ResultSummary.id),
+                func.max(ResultSummary.average_score),
+                func.min(ResultSummary.average_score),
+                func.avg(ResultSummary.average_score),
+            ).where(ResultSummary.batch_id == batch_id)
+        )
+
+        total_students, highest, lowest, class_average = stats_result.one()
+
+        return {
+            "batch": batch,
+            "class_teacher": class_teacher,
+            "principal": principal,
+            "total_students": total_students or 0,
+            "highest_average": float(highest or 0),
+            "lowest_average": float(lowest or 0),
+            "class_average": round(float(class_average or 0), 2),
+        }
 
 
 result_repository = ResultRepository()

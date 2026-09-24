@@ -13,11 +13,9 @@ class AttendanceMapper:
         present_count = sum(
             1 for record in sheet.records if record.status == AttendanceStatus.PRESENT
         )
-
         absent_count = sum(
             1 for record in sheet.records if record.status == AttendanceStatus.ABSENT
         )
-
         late_count = sum(
             1 for record in sheet.records if record.status == AttendanceStatus.LATE
         )
@@ -45,24 +43,26 @@ class AttendanceMapper:
 
     @staticmethod
     def student_history(records):
-        present_count = sum(1 for r in records if r.status == AttendanceStatus.PRESENT)
+        present_count = sum(
+            1 for record in records if record.status == AttendanceStatus.PRESENT
+        )
+        absent_count = sum(
+            1 for record in records if record.status == AttendanceStatus.ABSENT
+        )
+        late_count = sum(
+            1 for record in records if record.status == AttendanceStatus.LATE
+        )
 
-        absent_count = sum(1 for r in records if r.status == AttendanceStatus.ABSENT)
-
-        late_count = sum(1 for r in records if r.status == AttendanceStatus.LATE)
-
-        total = len(records)
+        total_school_days = len(records)
 
         attendance_rate = (
-            round(
-                ((present_count + late_count) / total) * 100,
-                2,
-            )
-            if total
+            round(((present_count + late_count) / total_school_days) * 100, 2)
+            if total_school_days
             else 0
         )
 
         return StudentAttendanceResponse(
+            total_school_days=total_school_days,
             present_count=present_count,
             absent_count=absent_count,
             late_count=late_count,

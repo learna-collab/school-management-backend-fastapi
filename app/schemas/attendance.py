@@ -65,6 +65,7 @@ class StudentAttendanceResponse(BaseModel):
     present_count: int
     absent_count: int
     late_count: int
+    total_school_days: int
 
     attendance_rate: float
 

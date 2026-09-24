@@ -986,16 +986,11 @@ class ResultService:
         session_id,
         term_id,
     ):
-        # Load student profile (admission number)
         user = (
             await db.execute(
                 select(User)
-                .options(
-                    selectinload(User.student_profile),
-                )
-                .where(
-                    User.id == student.id,
-                )
+                .options(selectinload(User.student_profile))
+                .where(User.id == student.id)
             )
         ).scalar_one()
 
@@ -1018,10 +1013,44 @@ class ResultService:
         batch = result["batch"]
         school = batch.school
 
+        meta = await self.repo.get_batch_report_meta(
+            db=db,
+            batch_id=batch.id,
+        )
+        class_teacher = meta.get("class_teacher")
+
+        principal = meta.get("principal")
+
+        class_teacher_name = None
+
+        if class_teacher:
+            class_teacher_name = (
+                f"{getattr(class_teacher, 'first_name', '')} "
+                f"{getattr(class_teacher, 'last_name', '')}"
+            ).strip()
+
+            if not class_teacher_name:
+                class_teacher_name = getattr(
+                    class_teacher,
+                    "username",
+                    None,
+                )
+
+        principal_name = None
+
+        if principal:
+            principal_name = (
+                f"{getattr(principal, 'first_name', '')} {getattr(principal, 'last_name', '')}"
+            ).strip()
+
+            if not principal_name:
+                principal_name = getattr(
+                    principal,
+                    "username",
+                    None,
+                )
+
         return {
-            # =====================================
-            # SCHOOL INFORMATION
-            # =====================================
             "school": {
                 "id": school.id if school else None,
                 "name": school.name if school else "",
@@ -1031,9 +1060,6 @@ class ResultService:
                 "email": getattr(school, "email", ""),
                 "website": getattr(school, "website", ""),
             },
-            # =====================================
-            # STUDENT INFORMATION
-            # =====================================
             "student": {
                 "id": student.id,
                 "name": f"{student.first_name} {student.last_name}",
@@ -1044,16 +1070,11 @@ class ResultService:
                     "admission_number",
                     None,
                 ),
-                "class_name": (batch.school_class.name if batch.school_class else ""),
+                "passport": getattr(user, "avatar_url", None),
+                "class_name": batch.school_class.name if batch.school_class else "",
             },
-            # =====================================
-            # ACADEMIC
-            # =====================================
-            "session": (batch.session.name if batch.session else ""),
-            "term": (batch.term.name if batch.term else ""),
-            # =====================================
-            # SUMMARY
-            # =====================================
+            "session": batch.session.name if batch.session else "",
+            "term": batch.term.name if batch.term else "",
             "summary": {
                 "total_score": response.total_score,
                 "average_score": response.average_score,
@@ -1062,9 +1083,16 @@ class ResultService:
                 "failed_subjects": response.failed_subjects,
                 "subjects_offered": len(response.subjects),
             },
-            # =====================================
-            # SUBJECTS
-            # =====================================
+            "class_statistics": {
+                "class_size": meta["total_students"],
+                "highest_average": meta["highest_average"],
+                "lowest_average": meta["lowest_average"],
+                "class_average": meta["class_average"],
+            },
+            "staff": {
+                "class_teacher": class_teacher_name,
+                "principal": principal_name,
+            },
             "subjects": [
                 {
                     "subject_name": subject.subject_name,
