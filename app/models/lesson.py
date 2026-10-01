@@ -61,6 +61,11 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    alf_sessions = relationship(
+        "TeacherALFSession",
+        back_populates="lesson",
+        cascade="all, delete-orphan",
+    )
     session = relationship("AcademicSession", back_populates="lessons")
 
     term = relationship("Term", back_populates="lessons")

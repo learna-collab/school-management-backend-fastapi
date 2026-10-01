@@ -92,3 +92,8 @@ class Class(
         back_populates="school_class",
         cascade="all, delete-orphan",
     )
+    alf_sessions = relationship(
+        "TeacherALFSession",
+        back_populates="school_class",
+        cascade="all, delete-orphan",
+    )

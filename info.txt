@@ -1,0 +1,1379 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Download,
+  Loader2,
+  Pencil,
+  Power,
+  PowerOff,
+  Search,
+  Upload,
+} from "lucide-react";
+
+import { toast } from "sonner";
+
+import {
+  AdminService,
+  CreateSchoolPayload,
+  School,
+  SchoolImportResponse,
+  UpdateSchoolPayload,
+} from "@/app/services/admin.service";
+
+import SchoolForm from "@/components/admin/school-form";
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { Button } from "@/components/ui/button";
+
+import { Badge } from "@/components/ui/badge";
+
+import { Input } from "@/components/ui/input";
+
+const PER_PAGE = 50;
+
+export default function SchoolsPage() {
+  // ==========================================
+  // SCHOOLS
+  // ==========================================
+
+  const [schools, setSchools] = useState<School[]>([]);
+  const pageCache = useRef(new Map<string, Map<number, School[]>>());
+
+  const [loading, setLoading] = useState(true);
+
+  // ==========================================
+  // SEARCH
+  // ==========================================
+
+  const [search, setSearch] = useState("");
+
+  // ==========================================
+  // PAGINATION
+  // ==========================================
+
+  const [page, setPage] = useState(1);
+
+  const [total, setTotal] = useState(0);
+
+  const [totalPages, setTotalPages] = useState(1);
+
+  // ==========================================
+  // CREATE
+  // ==========================================
+
+  const [creating, setCreating] = useState(false);
+
+  const [openCreate, setOpenCreate] = useState(false);
+
+  // ==========================================
+  // EDIT
+  // ==========================================
+
+  const [editingSchool, setEditingSchool] = useState<School | null>(null);
+
+  const [openEdit, setOpenEdit] = useState(false);
+
+  const [updating, setUpdating] = useState(false);
+
+  // ==========================================
+  // ENABLE / DISABLE
+  // ==========================================
+
+  const [togglingSchoolId, setTogglingSchoolId] = useState<string | null>(null);
+
+  // ==========================================
+  // CREDENTIALS
+  // ==========================================
+
+  const [openCredentials, setOpenCredentials] = useState(false);
+
+  const [credentials, setCredentials] = useState({
+    username: "",
+    password: "",
+  });
+
+  // ==========================================
+  // EXCEL EXPORT
+  // ==========================================
+
+  const [exporting, setExporting] = useState(false);
+
+  // ==========================================
+  // EXCEL IMPORT
+  // ==========================================
+
+  const [importing, setImporting] = useState(false);
+
+  // ==========================================
+  // IMPORT RESULTS
+  // ==========================================
+
+  const [openImportResults, setOpenImportResults] = useState(false);
+
+  const [importResult, setImportResult] = useState<SchoolImportResponse | null>(
+    null,
+  );
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ==========================================
+  // LOAD SCHOOLS
+  // ==========================================
+
+  async function loadSchools(
+    requestedPage = page,
+    requestedSearch = search,
+    forceRefresh = false,
+  ) {
+    const searchKey = requestedSearch.trim().toLowerCase();
+
+    // Get/create cache for this search
+    let searchCache = pageCache.current.get(searchKey);
+
+    if (!searchCache) {
+      searchCache = new Map<number, School[]>();
+      pageCache.current.set(searchKey, searchCache);
+    }
+
+    // ==========================================
+    // USE CACHE
+    // ==========================================
+
+    if (!forceRefresh && searchCache.has(requestedPage)) {
+      const cachedSchools = searchCache.get(requestedPage) ?? [];
+
+      setSchools(cachedSchools);
+      setPage(requestedPage);
+
+      return;
+    }
+
+    // ==========================================
+    // FETCH FROM API
+    // ==========================================
+
+    try {
+      setLoading(true);
+
+      const res = await AdminService.getSchools({
+        search: searchKey || undefined,
+        page: requestedPage,
+        per_page: PER_PAGE,
+      });
+
+      const fetchedSchools = (res.items ?? []).map((school) => ({
+        ...school,
+        state: school.state ?? "",
+        phone: school.phone ?? "",
+        email: school.email ?? "",
+      }));
+
+      // ==========================================
+      // CACHE PAGE
+      // ==========================================
+
+      searchCache.set(requestedPage, fetchedSchools);
+
+      // ==========================================
+      // DISPLAY
+      // ==========================================
+
+      setSchools(fetchedSchools);
+
+      setTotal(res.total ?? 0);
+      setPage(res.page ?? requestedPage);
+
+      setTotalPages(res.total_pages ?? 1);
+    } catch (err) {
+      console.error("Failed to load schools:", err);
+
+      toast.error("Failed to load schools");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function prefetchPage(requestedPage: number, requestedSearch = search) {
+    const searchKey = requestedSearch.trim().toLowerCase();
+
+    let searchCache = pageCache.current.get(searchKey);
+
+    if (!searchCache) {
+      searchCache = new Map<number, School[]>();
+      pageCache.current.set(searchKey, searchCache);
+    }
+
+    // Already cached
+    if (searchCache.has(requestedPage)) {
+      return;
+    }
+
+    // Don't prefetch invalid pages
+    if (requestedPage < 1 || requestedPage > totalPages) {
+      return;
+    }
+
+    try {
+      const res = await AdminService.getSchools({
+        search: searchKey || undefined,
+        page: requestedPage,
+        per_page: PER_PAGE,
+      });
+
+      const fetchedSchools = (res.items ?? []).map((school) => ({
+        ...school,
+        state: school.state ?? "",
+        phone: school.phone ?? "",
+        email: school.email ?? "",
+      }));
+
+      searchCache.set(requestedPage, fetchedSchools);
+    } catch (err) {
+      console.error(`Failed to prefetch page ${requestedPage}:`, err);
+    }
+  }
+
+  // ==========================================
+  // INITIAL LOAD
+  // ==========================================
+
+  useEffect(() => {
+    if (page < totalPages) {
+      void prefetchPage(page + 1, search);
+    }
+  }, [page, totalPages, search]);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => loadSchools(1, ""));
+  }, []);
+
+  // ==========================================
+  // SEARCH
+  // ==========================================
+
+  function handleSearch(value: string) {
+    setSearch(value);
+
+    setPage(1);
+
+    void loadSchools(1, value);
+  }
+
+  // ==========================================
+  // PAGE CHANGE
+  // ==========================================
+
+  async function goToPage(nextPage: number) {
+    if (loading) {
+      return;
+    }
+
+    if (nextPage < 1 || nextPage > totalPages) {
+      return;
+    }
+
+    if (nextPage === page) {
+      return;
+    }
+
+    await loadSchools(nextPage, search);
+  }
+
+  // ==========================================
+  // CREATE SCHOOL
+  // ==========================================
+
+  async function createSchool(
+    payload: CreateSchoolPayload | UpdateSchoolPayload,
+  ) {
+    if (creating) {
+      return;
+    }
+
+    try {
+      setCreating(true);
+
+      const res = await AdminService.createSchool(
+        payload as CreateSchoolPayload,
+      );
+
+      toast.success(res.message ?? "School created successfully");
+
+      // ========================================
+      // SHOW GENERATED CREDENTIALS
+      // ========================================
+
+      if (res.credentials) {
+        setCredentials({
+          username: res.credentials.username,
+          password: res.credentials.password,
+        });
+
+        setOpenCredentials(true);
+      }
+
+      setOpenCreate(false);
+
+      // Clear current cache so new school appears
+      pageCache.current.clear();
+
+      await loadSchools(page, search, true);
+    } catch (err: any) {
+      console.error("Create school error:", err);
+
+      const detail =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        "Unable to create school.";
+
+      toast.error(detail);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  // ==========================================
+  // EDIT SCHOOL
+  // ==========================================
+
+  function openEditSchool(school: School) {
+    setEditingSchool(school);
+
+    setOpenEdit(true);
+  }
+
+  // ==========================================
+  // UPDATE SCHOOL
+  // ==========================================
+
+  async function updateSchool(
+    payload: CreateSchoolPayload | UpdateSchoolPayload,
+  ) {
+    if (!editingSchool || updating) {
+      return;
+    }
+
+    try {
+      setUpdating(true);
+
+      const res = await AdminService.updateSchool(
+        editingSchool.id,
+        payload as UpdateSchoolPayload,
+      );
+
+      toast.success(res.message ?? "School updated successfully");
+
+      // ========================================
+      // SHOW UPDATED CREDENTIALS
+      // ========================================
+
+      if (res.credentials) {
+        setCredentials({
+          username: res.credentials.username,
+          password: res.credentials.password,
+        });
+
+        setOpenCredentials(true);
+      }
+
+      setOpenEdit(false);
+      setEditingSchool(null);
+
+      // Clear cache because school data changed
+      pageCache.current.clear();
+
+      await loadSchools(page, search, true);
+    } catch (err: any) {
+      console.error("Update school error:", err);
+
+      const detail =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        "Unable to update school.";
+
+      toast.error(detail);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  // ==========================================
+  // ENABLE / DISABLE
+  // ==========================================
+
+  async function toggleSchool(school: School) {
+    if (togglingSchoolId) {
+      return;
+    }
+
+    try {
+      setTogglingSchoolId(school.id);
+
+      if (school.is_active) {
+        await AdminService.disableSchool(school.id);
+
+        toast.success(`${school.name} disabled successfully`);
+      } else {
+        await AdminService.enableSchool(school.id);
+
+        toast.success(`${school.name} enabled successfully`);
+      }
+
+      // Clear affected cache
+      pageCache.current.clear();
+
+      await loadSchools(page, search, true);
+    } catch (err) {
+      console.error("Toggle school error:", err);
+
+      toast.error("Operation failed.");
+    } finally {
+      setTogglingSchoolId(null);
+    }
+  }
+
+  // ==========================================
+  // COPY
+  // ==========================================
+
+  async function copy(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+
+      toast.success(`${label} copied`);
+    } catch (err) {
+      console.error("Clipboard error:", err);
+
+      toast.error(`Unable to copy ${label.toLowerCase()}`);
+    }
+  }
+
+  // ==========================================
+  // DOWNLOAD SCHOOLS EXCEL
+  // ==========================================
+
+  async function downloadSchoolsExcel() {
+    if (exporting) {
+      return;
+    }
+
+    try {
+      setExporting(true);
+
+      const blob = await AdminService.downloadSchoolsExcel(
+        search.trim() || undefined,
+      );
+
+      const url = window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+
+      link.href = url;
+
+      link.download = `schools-records-${new Date()
+        .toISOString()
+        .slice(0, 10)}.xlsx`;
+
+      document.body.appendChild(link);
+
+      link.click();
+
+      link.remove();
+
+      window.URL.revokeObjectURL(url);
+
+      toast.success("School records downloaded successfully");
+    } catch (err: any) {
+      console.error("Excel export error:", err);
+
+      const detail =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        "Unable to download school records.";
+
+      toast.error(detail);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // ==========================================
+  // IMPORT SCHOOLS EXCEL
+  // ==========================================
+
+  function openImportFilePicker() {
+    if (importing) {
+      return;
+    }
+
+    fileInputRef.current?.click();
+  }
+
+  async function handleImportSchools(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+
+    // Reset input so the same file can be selected again
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    // ==========================================
+    // FILE VALIDATION
+    // ==========================================
+
+    const fileName = file.name.toLowerCase();
+
+    // Backend currently supports .xlsx only
+    if (!fileName.endsWith(".xlsx")) {
+      toast.error("Please select a valid .xlsx Excel file.");
+
+      return;
+    }
+
+    // 10MB limit
+    const maxFileSize = 10 * 1024 * 1024;
+
+    if (file.size > maxFileSize) {
+      toast.error("File is too large. Maximum allowed size is 10MB.");
+
+      return;
+    }
+
+    // ==========================================
+    // IMPORT
+    // ==========================================
+
+    try {
+      setImporting(true);
+
+      const res = await AdminService.importSchoolsExcel(file);
+
+      // ==========================================
+      // SAVE IMPORT RESULT
+      // ==========================================
+
+      setImportResult(res);
+
+      // ==========================================
+      // SHOW RESULTS
+      // ==========================================
+
+      setOpenImportResults(true);
+
+      // ==========================================
+      // REFRESH SCHOOL LIST
+      // ==========================================
+
+      pageCache.current.clear();
+
+      await loadSchools(1, search, true);
+
+      // ==========================================
+      // TOAST
+      // ==========================================
+
+      if (res.skipped_count > 0) {
+        toast.warning(
+          `${res.imported_count} imported, ${res.skipped_count} skipped.`,
+        );
+      } else {
+        toast.success(`${res.imported_count} schools imported successfully.`);
+      }
+    } catch (err: any) {
+      console.error("Excel import error:", err);
+
+      const detail =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        "Unable to import school records.";
+
+      toast.error(detail);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  // ==========================================
+  // DOWNLOAD SKIPPED RECORDS
+  // ==========================================
+
+  function downloadSkippedRecords() {
+    if (!importResult || importResult.skipped.length === 0) {
+      return;
+    }
+
+    const headers = ["Excel Row", "Source No.", "School", "Reason"];
+
+    const rows = importResult.skipped.map((record) => [
+      record.row,
+      record.source_no ?? "",
+      record.school ?? "",
+      record.reason ?? "",
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((value) => {
+            const text = String(value ?? "");
+
+            return `"${text.replace(/"/g, '""')}"`;
+          })
+          .join(","),
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+
+    link.href = url;
+
+    link.download = `school-import-skipped-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+
+    document.body.appendChild(link);
+
+    link.click();
+
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+
+    toast.success("Skipped records downloaded.");
+  }
+
+  // ==========================================
+  // PAGE NUMBERS
+  // ==========================================
+
+  function getPageNumbers() {
+    const pages: number[] = [];
+
+    const start = Math.max(1, page - 2);
+
+    const end = Math.min(totalPages, page + 2);
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    return pages;
+  }
+
+  // ==========================================
+  // RENDER
+  // ==========================================
+
+  return (
+    <>
+      <div className="space-y-6 p-8">
+        {/* ==========================================
+            HEADER
+        ========================================== */}
+
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Schools</h1>
+
+            <p className="text-muted-foreground">
+              Create schools, import school records, manage their administrators
+              and enable or disable access.
+            </p>
+          </div>
+
+          {/* ==========================================
+              HEADER ACTIONS
+          ========================================== */}
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {/* ==========================================
+                HIDDEN FILE INPUT
+            ========================================== */}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={handleImportSchools}
+            />
+
+            {/* ==========================================
+                IMPORT EXCEL
+            ========================================== */}
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={openImportFilePicker}
+              disabled={importing}
+            >
+              {importing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+
+              {importing ? "Importing..." : "Import Excel"}
+            </Button>
+
+            {/* ==========================================
+                DOWNLOAD EXCEL
+            ========================================== */}
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={downloadSchoolsExcel}
+              disabled={exporting}
+            >
+              {exporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+
+              {exporting ? "Downloading..." : "Download Excel"}
+            </Button>
+
+            {/* ==========================================
+                CREATE SCHOOL
+            ========================================== */}
+
+            <Dialog open={openCreate} onOpenChange={setOpenCreate}>
+              <DialogTrigger asChild>
+                <Button disabled={creating}>Create School</Button>
+              </DialogTrigger>
+
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Create New School</DialogTitle>
+                </DialogHeader>
+
+                <SchoolForm
+                  mode="create"
+                  onSubmit={createSchool}
+                  loading={creating}
+                />
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
+        {/* ==========================================
+            REGISTERED SCHOOLS
+        ========================================== */}
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <CardTitle>Registered Schools</CardTitle>
+
+              {/* ==========================================
+                  SEARCH
+              ========================================== */}
+
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+
+                <Input
+                  value={search}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  placeholder="Search schools..."
+                  className="pl-9"
+                />
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            {/* ==========================================
+                LOADING
+            ========================================== */}
+
+            {loading ? (
+              <div className="flex h-40 items-center justify-center text-muted-foreground">
+                Loading schools...
+              </div>
+            ) : schools.length === 0 ? (
+              /* ==========================================
+                  EMPTY
+              ========================================== */
+
+              <div className="flex h-40 items-center justify-center text-muted-foreground">
+                {search ? "No schools found." : "No schools have been created."}
+              </div>
+            ) : (
+              <>
+                {/* ==========================================
+                    TABLE
+                ========================================== */}
+
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>School</TableHead>
+
+                        <TableHead>Admin</TableHead>
+
+                        <TableHead>Username</TableHead>
+
+                        <TableHead>Password</TableHead>
+
+                        <TableHead>Status</TableHead>
+
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+
+                    <TableBody>
+                      {schools.map((school) => {
+                        const admin = school.admin;
+
+                        const isToggling = togglingSchoolId === school.id;
+
+                        return (
+                          <TableRow key={school.id}>
+                            {/* SCHOOL */}
+
+                            <TableCell>
+                              <div>
+                                <p className="font-semibold">{school.name}</p>
+
+                                <p className="text-xs text-muted-foreground">
+                                  {school.slug}
+                                </p>
+                              </div>
+                            </TableCell>
+
+                            {/* ADMIN */}
+
+                            <TableCell>
+                              <div>
+                                <p>
+                                  {admin?.first_name} {admin?.last_name}
+                                </p>
+
+                                <p className="text-xs text-muted-foreground">
+                                  {admin?.email}
+                                </p>
+                              </div>
+                            </TableCell>
+
+                            {/* USERNAME */}
+
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-sm">
+                                  {admin?.username ?? "-"}
+                                </span>
+
+                                {admin?.username && (
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() =>
+                                      copy(admin.username!, "Username")
+                                    }
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+
+                            {/* PASSWORD */}
+
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-sm">
+                                  {admin?.password ?? "-"}
+                                </span>
+
+                                {admin?.password && (
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() =>
+                                      copy(admin.password!, "Password")
+                                    }
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+
+                            {/* STATUS */}
+
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  school.is_active ? "default" : "destructive"
+                                }
+                              >
+                                {school.is_active ? "Active" : "Disabled"}
+                              </Badge>
+                            </TableCell>
+
+                            {/* ACTIONS */}
+
+                            <TableCell>
+                              <div className="flex justify-end gap-2">
+                                {/* EDIT */}
+
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openEditSchool(school)}
+                                >
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit
+                                </Button>
+
+                                {/* ENABLE / DISABLE */}
+
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={isToggling}
+                                  variant={
+                                    school.is_active ? "destructive" : "default"
+                                  }
+                                  onClick={() => toggleSchool(school)}
+                                >
+                                  {school.is_active ? (
+                                    <>
+                                      <PowerOff className="mr-2 h-4 w-4" />
+
+                                      {isToggling ? "Disabling..." : "Disable"}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Power className="mr-2 h-4 w-4" />
+
+                                      {isToggling ? "Enabling..." : "Enable"}
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* ==========================================
+                    PAGINATION
+                ========================================== */}
+
+                <div className="mt-4 flex flex-col gap-4 border-t pt-4 md:flex-row md:items-center md:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Showing{" "}
+                    <span className="font-medium text-foreground">
+                      {total === 0 ? 0 : (page - 1) * PER_PAGE + 1}
+                    </span>
+                    {"-"}
+                    <span className="font-medium text-foreground">
+                      {Math.min(page * PER_PAGE, total)}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-medium text-foreground">{total}</span>{" "}
+                    schools
+                  </p>
+
+                  <div className="flex items-center gap-1">
+                    {/* PREVIOUS */}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={loading || page <= 1}
+                      onClick={() => goToPage(page - 1)}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+
+                    {/* PAGE NUMBERS */}
+
+                    {getPageNumbers().map((pageNumber) => (
+                      <Button
+                        type="button"
+                        key={pageNumber}
+                        size="sm"
+                        variant={pageNumber === page ? "default" : "outline"}
+                        disabled={loading}
+                        onClick={() => goToPage(pageNumber)}
+                      >
+                        {pageNumber}
+                      </Button>
+                    ))}
+
+                    {/* NEXT */}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={loading || page >= totalPages}
+                      onClick={() => goToPage(page + 1)}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ==========================================
+          EDIT SCHOOL
+      ========================================== */}
+
+      <Dialog
+        open={openEdit}
+        onOpenChange={(open) => {
+          setOpenEdit(open);
+
+          if (!open) {
+            setEditingSchool(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Edit School</DialogTitle>
+          </DialogHeader>
+
+          {editingSchool && (
+            <SchoolForm
+              key={editingSchool.id}
+              mode="edit"
+              school={{
+                ...editingSchool,
+                website: editingSchool.website ?? null,
+                subscription_plan: editingSchool.subscription_plan ?? null,
+              }}
+              onSubmit={updateSchool}
+              loading={updating}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ==========================================
+          SCHOOL ADMIN CREDENTIALS
+      ========================================== */}
+
+      <Dialog open={openCredentials} onOpenChange={setOpenCredentials}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>School Created Successfully</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* INFO */}
+
+            <div className="rounded-xl border bg-green-50 p-4">
+              <h3 className="font-semibold text-green-700">
+                School Administrator Login
+              </h3>
+
+              <p className="mt-2 text-sm text-muted-foreground">
+                Save these credentials. They will be used by the School
+                Administrator to sign into the system.
+              </p>
+            </div>
+
+            {/* USERNAME */}
+
+            <div>
+              <label className="text-sm font-medium">Username</label>
+
+              <div className="mt-2 flex items-center justify-between rounded-lg border p-3">
+                <span className="font-mono">{credentials.username}</span>
+
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => copy(credentials.username, "Username")}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* PASSWORD */}
+
+            <div>
+              <label className="text-sm font-medium">Password</label>
+
+              <div className="mt-2 flex items-center justify-between rounded-lg border p-3">
+                <span className="font-mono">{credentials.password}</span>
+
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => copy(credentials.password, "Password")}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* DONE */}
+
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => setOpenCredentials(false)}
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==========================================
+          SCHOOL IMPORT RESULTS
+      ========================================== */}
+
+      <Dialog open={openImportResults} onOpenChange={setOpenImportResults}>
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>School Import Results</DialogTitle>
+          </DialogHeader>
+
+          {importResult && (
+            <div className="space-y-6">
+              {/* ==========================================
+                  SUMMARY
+              ========================================== */}
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                {/* TOTAL */}
+
+                <div className="rounded-xl border p-4">
+                  <p className="text-sm text-muted-foreground">Total Rows</p>
+
+                  <p className="mt-1 text-3xl font-bold">
+                    {importResult.total_rows}
+                  </p>
+                </div>
+
+                {/* IMPORTED */}
+
+                <div className="rounded-xl border bg-green-50 p-4">
+                  <p className="text-sm text-green-700">Imported</p>
+
+                  <p className="mt-1 text-3xl font-bold text-green-700">
+                    {importResult.imported_count}
+                  </p>
+                </div>
+
+                {/* SKIPPED */}
+
+                <div className="rounded-xl border bg-red-50 p-4">
+                  <p className="text-sm text-red-700">Skipped</p>
+
+                  <p className="mt-1 text-3xl font-bold text-red-700">
+                    {importResult.skipped_count}
+                  </p>
+                </div>
+              </div>
+
+              {/* ==========================================
+                  STATUS MESSAGE
+              ========================================== */}
+
+              <div
+                className={`rounded-lg border p-4 ${
+                  importResult.skipped_count > 0
+                    ? "border-yellow-200 bg-yellow-50"
+                    : "border-green-200 bg-green-50"
+                }`}
+              >
+                {importResult.skipped_count > 0 ? (
+                  <p className="text-sm">
+                    <strong>Import completed with some skipped records.</strong>{" "}
+                    {importResult.imported_count} schools were imported
+                    successfully and {importResult.skipped_count} records could
+                    not be imported.
+                  </p>
+                ) : (
+                  <p className="text-sm text-green-700">
+                    <strong>All records were imported successfully.</strong>
+                  </p>
+                )}
+              </div>
+
+              {/* ==========================================
+                  SKIPPED RECORDS
+              ========================================== */}
+
+              {importResult.skipped_count > 0 && (
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="font-semibold">Skipped Records</h3>
+
+                      <p className="text-sm text-muted-foreground">
+                        These records were not created. Check the reason column
+                        below.
+                      </p>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={downloadSkippedRecords}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download Skipped
+                    </Button>
+                  </div>
+
+                  <div className="max-h-[400px] overflow-auto rounded-lg border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Excel Row</TableHead>
+
+                          <TableHead>Source No.</TableHead>
+
+                          <TableHead>School</TableHead>
+
+                          <TableHead>Reason</TableHead>
+                        </TableRow>
+                      </TableHeader>
+
+                      <TableBody>
+                        {importResult.skipped.map((record, index) => (
+                          <TableRow key={`${record.row}-${index}`}>
+                            <TableCell className="font-medium">
+                              {record.row}
+                            </TableCell>
+
+                            <TableCell>{record.source_no ?? "-"}</TableCell>
+
+                            <TableCell>{record.school ?? "-"}</TableCell>
+
+                            <TableCell className="text-red-600">
+                              {record.reason ?? "Unknown reason"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              {/* ==========================================
+                  IMPORTED RECORDS
+              ========================================== */}
+
+              {importResult.imported_count > 0 && (
+                <details className="rounded-lg border">
+                  <summary className="cursor-pointer p-4 font-medium">
+                    View Imported Records ({importResult.imported_count})
+                  </summary>
+
+                  <div className="max-h-[350px] overflow-auto border-t">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Excel Row</TableHead>
+
+                          <TableHead>Source No.</TableHead>
+
+                          <TableHead>School</TableHead>
+
+                          <TableHead>Username</TableHead>
+                        </TableRow>
+                      </TableHeader>
+
+                      <TableBody>
+                        {importResult.imported.map((record, index) => (
+                          <TableRow key={`${record.row}-${index}`}>
+                            <TableCell>{record.row}</TableCell>
+
+                            <TableCell>{record.source_no ?? "-"}</TableCell>
+
+                            <TableCell>{record.school ?? "-"}</TableCell>
+
+                            <TableCell className="font-mono">
+                              {record.username ?? "-"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </details>
+              )}
+
+              {/* ==========================================
+                  CLOSE
+              ========================================== */}
+
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => setOpenImportResults(false)}
+              >
+                Done
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

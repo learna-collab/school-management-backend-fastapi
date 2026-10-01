@@ -1,3 +1,4 @@
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import Date, ForeignKey, String
@@ -9,6 +10,9 @@ from app.db.base import (
     TimestampMixin,
     UUIDMixin,
 )
+
+if TYPE_CHECKING:
+    from app.models.finance.student_fee import StudentFee
 
 
 class StudentProfile(
@@ -52,4 +56,9 @@ class StudentProfile(
     user = relationship(
         "User",
         back_populates="student_profile",
+    )
+    student_fees: Mapped[list["StudentFee"]] = relationship(
+        "StudentFee",
+        back_populates="student",
+        cascade="all, delete-orphan",
     )

@@ -1,0 +1,27 @@
+app/
+├── models/
+│   ├── lesson.py
+│   ├── lesson_alf.py
+│   ├── teacher_alf_session.py
+│   └── enums/
+│       └── alf.py
+│
+├── repositories/
+│   ├── lesson_repository.py
+│   └── teacher_alf_session_repository.py
+│
+├── services/
+│   ├── lesson_service.py
+│   └── teacher_alf_service.py
+│
+├── schemas/
+│   ├── lesson.py
+│   └── teacher_alf.py
+│
+└── api/
+    └── v1/
+        ├── teacher/
+        │   └── alf.py
+        │
+        └── super_admin/
+            └── alf.py

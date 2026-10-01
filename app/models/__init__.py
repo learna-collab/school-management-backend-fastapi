@@ -1,3 +1,8 @@
+from app.models.finance.expense import Expense
+from app.models.finance.expense_category import ExpenseCategory
+from app.models.finance.fee_category import FeeCategory
+from app.models.finance.payment import Payment
+from app.models.finance.student_fee import StudentFee
 from app.models.marketplace import (
     DigitalProduct,
     ListingImage,
@@ -16,6 +21,7 @@ from app.models.marketplace import (
     Vendor,
     VendorBankAccount,
 )
+from app.models.teacher_alf_session import TeacherALFSession
 
 from .academic_session import AcademicSession
 from .academic_template import AcademicTemplate
@@ -78,6 +84,9 @@ __all__ = [
     "ClassTemplate",
     # Marketplace
     "DigitalProduct",
+    "Expense",
+    "ExpenseCategory",
+    "FeeCategory",
     "Lesson",
     "LessonALF",
     "ListingImage",
@@ -94,6 +103,7 @@ __all__ = [
     "MarketplaceWallet",
     "ParentProfile",
     "PasswordResetToken",
+    "Payment",
     "PhysicalProduct",
     "RefreshToken",
     "ResultApproval",
@@ -107,10 +117,12 @@ __all__ = [
     "SchoolGallery",
     "SchoolProgram",
     "StudentEnrollment",
+    "StudentFee",
     "StudentParent",
     "StudentProfile",
     "Subject",
     "SubjectTemplate",
+    "TeacherALFSession",
     "TeacherClassSubject",
     "TeacherProfile",
     "TemplateClassSubject",

@@ -7,6 +7,11 @@ from app.api.v1.marketplace.order_router import router as marketplace_order_rout
 from app.api.v1.marketplace.payment import router as payment_router
 from app.api.v1.marketplace.public import router as marketplace_public_router
 from app.api.v1.marketplace.vendor import router as marketplace_vendor_router
+from app.api.v1.school_admin.alf_usage import (
+    router as school_admin_alf_router,
+)
+from app.api.v1.super_admin.alf_usage import router as super_admin_alf_router
+from app.api.v1.teacher.alf import router as teacher_alf_router
 
 from . import (
     admin,
@@ -75,3 +80,6 @@ api_router.include_router(marketplace_order_router)
 api_router.include_router(cart_router)
 api_router.include_router(checkout_router)
 api_router.include_router(payment_router)
+api_router.include_router(teacher_alf_router)
+api_router.include_router(super_admin_alf_router)
+api_router.include_router(school_admin_alf_router)

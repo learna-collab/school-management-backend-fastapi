@@ -119,6 +119,12 @@ class User(Base, UUIDMixin, TimestampMixin, TenantMixin):
         back_populates="teacher",
         cascade="all, delete-orphan",
     )
+    alf_sessions = relationship(
+        "TeacherALFSession",
+        back_populates="teacher",
+        foreign_keys="TeacherALFSession.teacher_id",
+        cascade="all, delete-orphan",
+    )
     vendor = relationship(
         "Vendor",
         back_populates="user",
