@@ -35,6 +35,7 @@ from .directory.locations import router as locations_router
 from .directory.programs import router as programs_router
 from .school_admin import academic_period, school_admin
 from .school_admin import lessons as school_admin_lessons
+from .school_admin.finance import router as school_admin_finance_router
 from .school_admin.school_admin_directory import router as school_admin_directory_router
 from .super_admin import academic as super_admin_academic
 from .super_admin import lessons as super_admin_lessons
@@ -83,3 +84,4 @@ api_router.include_router(payment_router)
 api_router.include_router(teacher_alf_router)
 api_router.include_router(super_admin_alf_router)
 api_router.include_router(school_admin_alf_router)
+api_router.include_router(school_admin_finance_router)

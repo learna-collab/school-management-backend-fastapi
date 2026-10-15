@@ -1,9 +1,9 @@
 # app/models/blog_post.py
 
-from sqlalchemy import String, Boolean, Text, Integer, ForeignKey
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, UUIDMixin, TimestampMixin
+from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
 class BlogPost(Base, UUIDMixin, TimestampMixin):
@@ -28,3 +28,9 @@ class BlogPost(Base, UUIDMixin, TimestampMixin):
 
     author_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     author = relationship("User")
+    attachments = relationship(
+        "BlogAttachment",
+        back_populates="blog",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )

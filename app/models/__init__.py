@@ -1,6 +1,17 @@
+from app.models.blog_attachment import BlogAttachment
 from app.models.finance.expense import Expense
 from app.models.finance.expense_category import ExpenseCategory
 from app.models.finance.fee_category import FeeCategory
+from app.models.finance.operations import (
+    FinanceAccount,
+    FinanceInvoice,
+    FinanceInvoiceLine,
+    FinanceInvoicePayment,
+    FinanceJournalEntry,
+    FinanceJournalLine,
+    FinanceSalaryProfile,
+    PayrollRecord,
+)
 from app.models.finance.payment import Payment
 from app.models.finance.student_fee import StudentFee
 from app.models.marketplace import (
@@ -72,6 +83,7 @@ __all__ = [
     "AdmissionEnquiry",
     "AttendanceRecord",
     "AttendanceSheet",
+    "BlogAttachment",
     "BlogPost",
     "CBTAnswer",
     "CBTAttempt",
@@ -87,6 +99,13 @@ __all__ = [
     "Expense",
     "ExpenseCategory",
     "FeeCategory",
+    "FinanceAccount",
+    "FinanceInvoice",
+    "FinanceInvoiceLine",
+    "FinanceInvoicePayment",
+    "FinanceJournalEntry",
+    "FinanceJournalLine",
+    "FinanceSalaryProfile",
     "Lesson",
     "LessonALF",
     "ListingImage",
@@ -104,6 +123,7 @@ __all__ = [
     "ParentProfile",
     "PasswordResetToken",
     "Payment",
+    "PayrollRecord",
     "PhysicalProduct",
     "RefreshToken",
     "ResultApproval",
