@@ -1,7 +1,17 @@
+import os
 from urllib.parse import quote
+from uuid import UUID, uuid4
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,10 +20,55 @@ from app.db.database import get_db
 from app.models.blog_attachment import BlogAttachment
 from app.schemas.blog import BlogCreate, BlogUpdate  # 👈 ADD THIS
 from app.services.blog_attachment_service import blog_attachment_upload_service
+from app.services.blog_post_view_service import blog_post_view_service
 from app.services.blog_services import BlogService
 
 router = APIRouter(tags=["Blogs"], prefix="/blogs")
 service = BlogService()
+
+
+@router.post("/{blog_id}/view")
+async def record_blog_view(
+    blog_id: str,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    visitor_id = request.cookies.get("lerna_blog_visitor")
+
+    try:
+        visitor_id = str(UUID(visitor_id)) if visitor_id else str(uuid4())
+    except (ValueError, TypeError, AttributeError):
+        visitor_id = str(uuid4())
+
+    result = await blog_post_view_service.record_view(
+        db=db,
+        blog_id=blog_id,
+        visitor_id=visitor_id,
+    )
+
+    if not result["found"]:
+        raise HTTPException(
+            status_code=404,
+            detail="Blog post not found",
+        )
+
+    is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+
+    response.set_cookie(
+        key="lerna_blog_visitor",
+        value=visitor_id,
+        max_age=60 * 60 * 24 * 400,
+        httponly=True,
+        secure=is_production,
+        samesite="lax",
+        path="/",
+    )
+
+    return {
+        "unique_visitors": result["unique_visitors"],
+        "daily_unique_views": result["daily_unique_views"],
+    }
 
 
 @router.get("/{blog_id}/attachments/{attachment_id}/preview")

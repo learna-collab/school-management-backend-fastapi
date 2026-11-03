@@ -96,16 +96,10 @@ async def get_school_exams(
     db: DBSession,
     current_user: RequireSchoolAdmin,
 ):
-    try:
-        return await service.get_school_exams(
-            db=db,
-            school_id=current_user.school_id,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.get_school_exams(
+        db=db,
+        school_id=current_user.school_id,
+    )
 
 
 @router.get("/admin/exams/{exam_id}")
@@ -242,13 +236,7 @@ async def available_exams(
     db: DBSession,
     user: RequireStudent,
 ):
-    try:
-        return await service.get_available_exams(db=db, user=user)
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+    return await service.get_available_exams(db=db, user=user)
 
 
 @router.post("/student/exams/{exam_id}/start")

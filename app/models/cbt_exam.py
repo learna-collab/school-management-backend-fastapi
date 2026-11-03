@@ -3,12 +3,14 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
     String,
     Text,
+    text,
 )
 from sqlalchemy import (
     Enum as SQLEnum,
@@ -21,6 +23,11 @@ from app.db.base import (
     TimestampMixin,
     UUIDMixin,
 )
+
+
+class AssessmentType(str, Enum):
+    CA = "CA"
+    EXAM = "EXAM"
 
 
 class ExamStatus(str, Enum):
@@ -91,6 +98,29 @@ class CBTExam(
 
     pass_mark: Mapped[int] = mapped_column(
         Integer,
+        default=40,
+    )
+
+    assessment_type: Mapped[AssessmentType] = mapped_column(
+        SQLEnum(AssessmentType, name="cbt_assessment_type"),
+        nullable=False,
+        default=AssessmentType.CA,
+    )
+
+    assessment_number: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    assessment_label: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        default="Assessment",
+    )
+
+    contribution_marks: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
         default=40,
     )
 
@@ -173,6 +203,11 @@ class CBTExam(
         back_populates="exam",
         cascade="all, delete-orphan",
     )
+    is_result_assessment: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
 
     attempts = relationship(
         "CBTAttempt",
@@ -181,6 +216,33 @@ class CBTExam(
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "(assessment_type = 'CA' AND assessment_number IS NOT NULL AND contribution_marks BETWEEN 1 AND 40) "
+            "OR (assessment_type = 'EXAM' AND assessment_number IS NULL AND contribution_marks = 60)",
+            name="ck_cbt_exam_assessment_allocation",
+        ),
+        CheckConstraint("max_attempts >= 1", name="ck_cbt_exam_max_attempts_positive"),
+        Index(
+            "uq_cbt_ca_assessment_number",
+            "school_id",
+            "session_id",
+            "term_id",
+            "class_id",
+            "subject_id",
+            "assessment_number",
+            unique=True,
+            postgresql_where=text("assessment_type = 'CA'"),
+        ),
+        Index(
+            "uq_cbt_main_exam",
+            "school_id",
+            "session_id",
+            "term_id",
+            "class_id",
+            "subject_id",
+            unique=True,
+            postgresql_where=text("assessment_type = 'EXAM'"),
+        ),
         Index(
             "ix_cbt_exam_class_subject",
             "class_id",

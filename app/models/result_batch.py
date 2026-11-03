@@ -35,8 +35,9 @@ class ResultBatch(
         index=True,
     )
 
-    created_by: Mapped[UUID] = mapped_column(
+    created_by: Mapped[UUID | None] = mapped_column(
         ForeignKey("users.id"),
+        nullable=True,
     )
 
     version: Mapped[int] = mapped_column(

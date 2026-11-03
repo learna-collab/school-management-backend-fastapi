@@ -4,10 +4,12 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     UniqueConstraint,
 )
 from sqlalchemy import (
@@ -73,8 +75,20 @@ class CBTAttempt(
         nullable=True,
     )
 
+    attempt_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
     score: Mapped[int] = mapped_column(
         Integer,
+        default=0,
+    )
+
+    contribution_score: Mapped[float] = mapped_column(
+        Numeric(7, 2),
+        nullable=False,
         default=0,
     )
 
@@ -122,10 +136,12 @@ class CBTAttempt(
     )
 
     __table_args__ = (
+        CheckConstraint("attempt_number >= 1", name="ck_cbt_attempt_number_positive"),
         UniqueConstraint(
             "exam_id",
             "student_id",
-            name="uq_exam_student_attempt",
+            "attempt_number",
+            name="uq_exam_student_attempt_number",
         ),
         Index(
             "ix_exam_student_attempt",
