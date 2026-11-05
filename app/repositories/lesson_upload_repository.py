@@ -1,11 +1,11 @@
 from uuid import UUID
 
+from app.models.lesson_upload import LessonUpload
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.lesson import Lesson
-from app.models.lesson_upload import LessonUpload
 
 
 class LessonUploadRepository:

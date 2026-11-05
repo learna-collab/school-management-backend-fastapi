@@ -31,10 +31,14 @@ class SchoolAssignmentRepository:
             )
             .options(
                 selectinload(User.credential),
-                selectinload(User.credential),
+                selectinload(User.student_profile),
                 selectinload(User.enrollments).selectinload(
                     StudentEnrollment.school_class
                 ),
+            )
+            .order_by(
+                User.first_name,
+                User.last_name,
             )
         )
 
@@ -414,6 +418,20 @@ class SchoolAssignmentRepository:
         await db.commit()
 
         return count
+
+    async def update_student_enrollment_class(
+        self,
+        db: AsyncSession,
+        *,
+        enrollment: StudentEnrollment,
+        class_id: UUID,
+    ):
+        enrollment.class_id = class_id
+        enrollment.is_current = True
+
+        db.add(enrollment)
+
+        return enrollment
 
 
 school_assignment_repo = SchoolAssignmentRepository()

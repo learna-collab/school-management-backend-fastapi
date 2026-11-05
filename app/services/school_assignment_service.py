@@ -59,14 +59,33 @@ class SchoolAssignmentService:
             "students": [
                 {
                     "id": str(student.id),
+                    # USER INFORMATION
                     "first_name": student.first_name,
                     "last_name": student.last_name,
                     "email": student.email,
+                    # STUDENT PROFILE INFORMATION
+                    "gender": (
+                        student.student_profile.gender
+                        if student.student_profile
+                        else None
+                    ),
+                    "date_of_birth": (
+                        student.student_profile.date_of_birth
+                        if student.student_profile
+                        else None
+                    ),
+                    "admission_date": (
+                        student.student_profile.admission_date
+                        if student.student_profile
+                        else None
+                    ),
+                    # CLASS INFORMATION
                     "class_name": (
                         student.enrollments[0].school_class.name
                         if student.enrollments
                         else None
                     ),
+                    # ACCOUNT INFORMATION
                     "is_active": student.is_active,
                     "username": (
                         student.credential.username if student.credential else None
@@ -527,6 +546,54 @@ class SchoolAssignmentService:
         return {
             "message": "Students promoted successfully.",
             "students_promoted": promoted,
+        }
+
+    async def update_student_class(
+        self,
+        db,
+        *,
+        student_id: UUID,
+        class_id: UUID,
+        school_id: UUID,
+    ):
+        period = await self._get_active_period(
+            db,
+            school_id,
+        )
+
+        if not period["configured"]:
+            return {
+                "success": False,
+                "requires_academic_setup": True,
+                "message": (
+                    "Create and activate an academic session "
+                    "and term before updating a student's class."
+                ),
+            }
+
+        enrollment = await self.repo.get_student_enrollment(
+            db=db,
+            student_id=student_id,
+            session_id=period["session"].id,
+        )
+
+        if not enrollment:
+            return {
+                "success": False,
+                "message": (
+                    "The student has no enrollment for the active academic session."
+                ),
+            }
+
+        await self.repo.update_student_enrollment_class(
+            db=db,
+            enrollment=enrollment,
+            class_id=class_id,
+        )
+
+        return {
+            "success": True,
+            "message": "Student class updated successfully.",
         }
 
 

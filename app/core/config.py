@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     frontend_url: str
     secret_key: str
     PAYSTACK_SECRET_KEY: str
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4.1-mini"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -14,6 +14,7 @@ from app.models.finance.operations import (
 )
 from app.models.finance.payment import Payment
 from app.models.finance.student_fee import StudentFee
+from app.models.lesson_learning_content import LessonLearningContent
 from app.models.marketplace import (
     DigitalProduct,
     ListingImage,
@@ -32,6 +33,7 @@ from app.models.marketplace import (
     Vendor,
     VendorBankAccount,
 )
+from app.models.student_learning_progress import StudentLearningProgress
 from app.models.teacher_alf_session import TeacherALFSession
 
 from .academic_session import AcademicSession
@@ -108,6 +110,7 @@ __all__ = [
     "FinanceSalaryProfile",
     "Lesson",
     "LessonALF",
+    "LessonLearningContent",
     "ListingImage",
     "MarketplaceCart",
     "MarketplaceCartItem",
@@ -138,6 +141,7 @@ __all__ = [
     "SchoolProgram",
     "StudentEnrollment",
     "StudentFee",
+    "StudentLearningProgress",
     "StudentParent",
     "StudentProfile",
     "Subject",

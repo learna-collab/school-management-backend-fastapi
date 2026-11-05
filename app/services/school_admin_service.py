@@ -1,4 +1,5 @@
 from io import BytesIO
+from uuid import UUID
 
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
@@ -82,10 +83,13 @@ class SchoolAdminService:
         student_id: str,
         payload: UpdateStudentRequest,
     ):
+        school_uuid = UUID(str(school_id))
+        student_uuid = UUID(str(student_id))
+
         student = await self.repo.get_student_by_id(
             db,
-            school_id,
-            student_id,
+            school_uuid,
+            student_uuid,
         )
 
         if not student:
@@ -94,14 +98,91 @@ class SchoolAdminService:
                 detail="Student not found",
             )
 
-        student.first_name = payload.first_name
-        student.last_name = payload.last_name
-        student.email = payload.email
+        profile = student.student_profile
 
-        await self.repo.commit(db)
+        if not profile:
+            raise HTTPException(
+                status_code=404,
+                detail="Student profile not found",
+            )
+
+        # --------------------------------------------------
+        # RESOLVE CLASS
+        # --------------------------------------------------
+
+        school_class = await self.repo.get_class_by_name(
+            db=db,
+            school_id=school_uuid,
+            class_name=payload.class_name,
+        )
+
+        if not school_class:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Class '{payload.class_name}' not found.",
+            )
+
+        # --------------------------------------------------
+        # UPDATE USER INFORMATION
+        # --------------------------------------------------
+
+        student.first_name = payload.first_name.strip()
+        student.last_name = payload.last_name.strip()
+        student.email = str(payload.email).strip().lower()
+
+        # --------------------------------------------------
+        # UPDATE STUDENT PROFILE
+        # --------------------------------------------------
+
+        profile.gender = payload.gender.strip()
+        profile.date_of_birth = payload.date_of_birth
+        profile.admission_date = payload.admission_date
+
+        db.add(student)
+        db.add(profile)
+
+        # --------------------------------------------------
+        # UPDATE ACTIVE SESSION CLASS ENROLLMENT
+        # --------------------------------------------------
+
+        assignment = await self.assignment_service.update_student_class(
+            db=db,
+            student_id=student_uuid,
+            class_id=school_class.id,
+            school_id=school_uuid,
+        )
+
+        if not assignment["success"]:
+            raise HTTPException(
+                status_code=409,
+                detail=assignment["message"],
+            )
+
+        # --------------------------------------------------
+        # COMMIT ALL CHANGES
+        # --------------------------------------------------
+
+        try:
+            await self.repo.commit(db)
+            await self.repo.refresh(db, student)
+            await self.repo.refresh(db, profile)
+
+        except Exception:
+            await db.rollback()
+            raise
 
         return {
-            "message": "Student updated successfully",
+            "message": "Student updated successfully.",
+            "student": {
+                "id": str(student.id),
+                "first_name": student.first_name,
+                "last_name": student.last_name,
+                "email": student.email,
+                "gender": profile.gender,
+                "date_of_birth": profile.date_of_birth,
+                "admission_date": profile.admission_date,
+                "class_name": school_class.name,
+            },
         }
 
     async def update_teacher(

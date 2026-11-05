@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.classes import Class
 from app.models.subject import Subject
@@ -59,6 +60,7 @@ class SchoolAdminRepository:
             ),
         )
         return result.scalars().all()
+
     # ==================================================
     # UPDATE STUDENT
     # ==================================================
@@ -70,12 +72,17 @@ class SchoolAdminRepository:
         student_id: UUID,
     ):
         result = await db.execute(
-            select(User).where(
+            select(User)
+            .where(
                 User.id == student_id,
                 User.school_id == school_id,
                 User.role == UserRole.STUDENT,
             )
+            .options(
+                selectinload(User.student_profile),
+            )
         )
+
         return result.scalar_one_or_none()
 
     # ==================================================
@@ -149,6 +156,21 @@ class SchoolAdminRepository:
 
     async def refresh(self, db: AsyncSession, obj):
         await db.refresh(obj)
+
+    async def get_class_by_name(
+        self,
+        db: AsyncSession,
+        school_id: UUID,
+        class_name: str,
+    ):
+        result = await db.execute(
+            select(Class).where(
+                Class.school_id == school_id,
+                func.lower(Class.name) == class_name.strip().lower(),
+            )
+        )
+
+        return result.scalar_one_or_none()
 
 
 school_admin_repo = SchoolAdminRepository()
