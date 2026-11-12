@@ -46,7 +46,7 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
 
     objectives = Column(Text, nullable=False)
     teacher_notes = Column(Text, nullable=True)
-
+    source_text = Column(Text, nullable=True)
     file_url = Column(Text, nullable=True)
 
     is_published = Column(Boolean, default=True)

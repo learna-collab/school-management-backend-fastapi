@@ -44,13 +44,12 @@ class LessonLearningContent(Base, UUIDMixin, TimestampMixin):
         index=True,
     )
 
-    school_id: Mapped[PyUUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("schools.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
+    school_id: Mapped[PyUUID | None] = mapped_column(
+    PGUUID(as_uuid=True),
+    ForeignKey("schools.id", ondelete="CASCADE"),
+    nullable=True,
+    index=True,
+)
     version: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

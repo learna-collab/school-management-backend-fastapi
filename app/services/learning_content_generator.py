@@ -1,132 +1,251 @@
 import json
+from pathlib import PurePosixPath
+from urllib.parse import unquote, urlparse
 
+import httpx
 from openai import (
     APIConnectionError,
     APIStatusError,
+    APITimeoutError,
+    AsyncOpenAI,
     AuthenticationError,
-    OpenAI,
+    RateLimitError,
 )
 
 from app.schemas.learning_centre import LessonLearningDocument
+from app.services.document_reader import DocumentReader
 
 
 class LearningContentGenerationError(Exception):
-    """Raised when AI learning content cannot be generated."""
+    pass
 
 
 class LearningContentGenerator:
     def __init__(
         self,
-        api_key: str | None,
+        api_key: str,
         model: str = "gpt-4.1-mini",
     ):
         if not api_key:
-            raise LearningContentGenerationError(
-                "OpenAI API key is not configured. "
-                "Set OPENAI_API_KEY in your backend environment."
+            raise ValueError(
+                "An OpenAI API key is required for learning content generation."
             )
 
-        self.client = OpenAI(api_key=api_key)
+        self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
 
-    def generate(
+    async def get_source_text(self, lesson) -> str:
+        # New uploads already have extracted text saved.
+        source_text = getattr(lesson, "source_text", None)
+
+        if source_text and source_text.strip():
+            return source_text.strip()
+
+        # Older uploads need to be downloaded and extracted.
+        if not lesson.file_url:
+            raise LearningContentGenerationError(
+                "This lesson has no uploaded document."
+            )
+
+        parsed_url = urlparse(lesson.file_url)
+        suffix = PurePosixPath(unquote(parsed_url.path)).suffix.lower()
+
+        if suffix not in {".pdf", ".docx"}:
+            raise LearningContentGenerationError(
+                "The original lesson file must be a PDF or DOCX."
+            )
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=60,
+                follow_redirects=True,
+            ) as client:
+                response = await client.get(lesson.file_url)
+                response.raise_for_status()
+
+            reader = DocumentReader()
+            source_text = reader.read_bytes(
+                file_bytes=response.content,
+                suffix=suffix,
+            )
+
+            # Retain the extracted text for subsequent generation.
+            lesson.source_text = source_text
+
+            return source_text
+
+        except LearningContentGenerationError:
+            raise
+        except Exception as exc:
+            raise LearningContentGenerationError(
+                "Could not extract text from the original lesson file. "
+                "Check that the Cloudinary file is accessible."
+            ) from exc
+
+    async def generate(
         self,
         *,
         source_text: str,
-        lesson_title: str,
+        title: str,
         topic: str,
         objectives: str,
         class_name: str,
         subject_name: str,
-        academic_level: str,
     ) -> dict:
-        if not source_text or not source_text.strip():
+        source_text = source_text.strip()
+
+        if not source_text:
             raise LearningContentGenerationError(
-                "The original lesson document contains no readable text."
+                "The lesson document contains no extractable text."
+            )
+
+        # Avoid silently truncating lesson notes.
+        if len(source_text) > 80_000:
+            raise LearningContentGenerationError(
+                "This lesson document is too large for the current "
+                "generation workflow. Please split it into smaller "
+                "documents before generating learning content."
             )
 
         system_prompt = """
-You are an educational content assistant for a school Learning Centre.
+You are an experienced school learning-content designer.
 
-Your task is to transform an uploaded lesson note into clear,
-age-appropriate learning material for students.
+Your task is to transform an uploaded school lesson note into
+clear, age-appropriate learning material for students.
 
 STRICT SOURCE-GROUNDING RULES:
 
-1. Treat the supplied lesson document as the primary and authoritative source.
-2. Do not invent facts, definitions, formulas, dates, examples, or claims
-   that are not supported by the document.
-3. Do not silently fill gaps in the source using your general knowledge.
-4. You may simplify wording and explain concepts in student-friendly language,
-   but preserve the meaning of the source.
-5. If an important concept is mentioned but not explained adequately,
-   identify that limitation in generation_warnings.
-6. If the source is insufficient to create reliable learning content,
-   set source_coverage to INSUFFICIENT.
-7. If only some sections are adequately supported,
-   set source_coverage to PARTIAL.
-8. Set source_coverage to COMPLETE only when the source adequately supports
-   the generated learning material.
-9. Do not invent numerical examples. Any numerical example you create
-   must be directly supported by the source and its calculations must be correct.
-10. Every practice question must have an answer supported by the source.
-11. Every multiple-choice correct_answer must exactly match one of its options.
-12. Make the explanation for every correct answer understandable to the
-    intended student age and academic level.
-13. Avoid questions whose answers are not available in the source.
-14. Do not include teacher-only notes or administrative instructions
-    in student-facing content.
-15. Do not mention that you are an AI.
+1. Use the supplied lesson note as your primary and authoritative source.
+2. Do not invent facts, definitions, formulas, dates, historical events,
+   scientific claims, or curriculum requirements.
+3. Do not introduce a topic that is unrelated to the uploaded lesson.
+4. You may simplify explanations and provide examples that help students
+   understand the supplied material.
+5. Any example that requires information not contained in the source
+   must be a straightforward illustration of a concept explicitly taught
+   in the source. Do not present unsupported facts as source material.
+6. If the source does not contain enough information to support a section,
+   keep that section limited and explain the limitation in
+   generation_warnings.
+7. If the source is incomplete, set source_coverage to PARTIAL.
+8. If the source is too incomplete to create reliable learning material,
+   set source_coverage to INSUFFICIENT and explain why.
+9. Do not fabricate learning objectives. Use the supplied objectives
+   and derive simple learning outcomes only when directly supported
+   by the lesson.
+10. Ensure every practice question has one unambiguous correct answer.
+11. Check arithmetic and calculations in solved examples.
+12. Use language suitable for the specified class level.
+13. Do not include markdown code fences around the JSON response.
 
 CONTENT REQUIREMENTS:
 
-- Write a student-friendly introduction.
-- Organize explanations into meaningful sections.
-- Include key points where supported by the source.
-- Include solved examples only where the source supports them.
-- Create practice questions where sufficient information exists.
-- Include hints and explanations for questions.
-- Create age-appropriate activities where supported by the lesson.
-- Include a glossary for important terms where appropriate.
-- Keep the language appropriate for the specified academic level.
-- Do not pad the response with generic or unrelated content.
+- A student-friendly introduction.
+- Clear lesson sections with explanations and key points.
+- Solved examples with step-by-step solutions where appropriate.
+- Practice questions with correct answers and explanations.
+- Useful learning activities.
+- A glossary of important terms.
+- A concise summary.
 
-Return valid JSON matching the requested schema.
+PRACTICE QUESTION RULES:
+
+- Multiple choice questions must have at least two options.
+- The correct answer must exactly match one of the options.
+- True/false questions must use boolean answers: true or false.
+- Short-answer questions must have a clear expected answer.
+- Avoid ambiguous questions.
+- Do not create questions that cannot be answered from the lesson.
+
+Return valid JSON matching the requested document structure.
 """
 
         user_prompt = f"""
-Prepare a student Learning Centre lesson using the following information.
+Create a complete learning document using the information below.
 
-LESSON METADATA
+CLASS LEVEL:
+{class_name}
 
-Title: {lesson_title}
-Topic: {topic}
-Subject: {subject_name}
-Class: {class_name}
-Academic level: {academic_level}
-Learning objectives: {objectives}
+SUBJECT:
+{subject_name}
 
-ORIGINAL UPLOADED LESSON DOCUMENT
+LESSON TITLE:
+{title}
 
-The content below is the actual extracted content of the uploaded document.
-It may contain HTML markup from a DOCX file.
+TOPIC:
+{topic}
 
-<lesson_source>
+EXISTING LEARNING OBJECTIVES:
+{objectives}
+
+UPLOADED LESSON NOTE:
+---
 {source_text}
-</lesson_source>
+---
 
-Generate structured student learning content.
+Return a JSON object with these fields:
 
-The content must remain grounded in the uploaded document.
-If the document does not support a section, return an empty list for that
-section rather than inventing material.
+{{
+  "title": "string",
+  "introduction": "string",
+  "learning_objectives": ["string"],
+  "sections": [
+    {{
+      "heading": "string",
+      "explanation": "string",
+      "key_points": ["string"]
+    }}
+  ],
+  "solved_examples": [
+    {{
+      "question": "string",
+      "steps": ["string"],
+      "answer": "string",
+      "explanation": "string"
+    }}
+  ],
+  "practice_questions": [
+    {{
+      "question_id": "unique string",
+      "question": "string",
+      "question_type": "multiple_choice",
+      "options": ["string"],
+      "correct_answer": "string",
+      "explanation": "string",
+      "hint": "string or null",
+      "marks": 1
+    }}
+  ],
+  "activities": [
+    {{
+      "title": "string",
+      "activity_type": "reflection",
+      "instructions": "string",
+      "expected_outcome": "string"
+    }}
+  ],
+  "glossary": [
+    {{
+      "term": "string",
+      "meaning": "string"
+    }}
+  ],
+  "summary": "string",
+  "source_coverage": "COMPLETE",
+  "generation_warnings": []
+}}
 
-For insufficient source material, explain the limitation in
-generation_warnings and set source_coverage accordingly.
+Use only the allowed question types:
+multiple_choice, short_answer, true_false.
+
+Use only the allowed activity types:
+reflection, matching, fill_in_the_blank, practical, discussion.
+
+If the uploaded lesson is insufficient, do not pretend it is complete.
 """
 
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 temperature=0.2,
                 response_format={"type": "json_object"},
@@ -146,42 +265,53 @@ generation_warnings and set source_coverage accordingly.
 
             if not response_text:
                 raise LearningContentGenerationError(
-                    "OpenAI returned an empty response."
+                    "The AI provider returned an empty response."
                 )
 
-            generated_data = json.loads(response_text)
+            data = json.loads(response_text)
 
-            validated_content = LessonLearningDocument.model_validate(generated_data)
+            validated = LessonLearningDocument.model_validate(data)
 
-            return validated_content.model_dump(mode="json")
+            return validated.model_dump(mode="json")
+
+        except LearningContentGenerationError:
+            raise
 
         except AuthenticationError as exc:
             raise LearningContentGenerationError(
-                "OpenAI authentication failed. Check OPENAI_API_KEY."
+                "OpenAI authentication failed. Check your API key."
+            ) from exc
+
+        except RateLimitError as exc:
+            raise LearningContentGenerationError(
+                "The OpenAI rate limit or available quota was exceeded. "
+                "Please try again later."
+            ) from exc
+
+        except APITimeoutError as exc:
+            raise LearningContentGenerationError(
+                "The AI generation request timed out. Please try again."
             ) from exc
 
         except APIConnectionError as exc:
             raise LearningContentGenerationError(
-                "Could not connect to the OpenAI API. Please try again."
+                "Could not connect to the AI provider."
             ) from exc
 
         except APIStatusError as exc:
             raise LearningContentGenerationError(
-                f"OpenAI API returned an error: {exc.status_code}."
+                "The AI provider could not complete the request."
             ) from exc
 
         except json.JSONDecodeError as exc:
             raise LearningContentGenerationError(
-                "The AI returned an invalid JSON response."
+                "The AI provider returned invalid JSON."
             ) from exc
 
         except Exception as exc:
-            if isinstance(
-                exc,
-                LearningContentGenerationError,
-            ):
-                raise
-
             raise LearningContentGenerationError(
-                f"Could not validate generated lesson content: {exc}"
+                "Learning content could not be generated or validated."
             ) from exc
+
+    async def close(self):
+        await self.client.close()
