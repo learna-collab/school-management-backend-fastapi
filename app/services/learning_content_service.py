@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timezone
 from uuid import UUID
@@ -17,6 +18,8 @@ from app.services.learning_content_generator import (
     LearningContentGenerator,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class LearningContentService:
     def __init__(self):
@@ -28,7 +31,6 @@ class LearningContentService:
 
     def _get_generator(self) -> LearningContentGenerator:
         api_key = settings.openai_api_key
-        print(f"Using OPENAI_API_KEY: {api_key}")
 
         if not api_key:
             raise HTTPException(
@@ -70,6 +72,11 @@ class LearningContentService:
             # EXTRACT ORIGINAL LESSON NOTES
             # --------------------------------------------------
 
+            had_saved_source_text = bool(
+                getattr(lesson, "source_text", None)
+                and lesson.source_text.strip()
+            )
+
             source_text = await generator.get_source_text(lesson)
 
             if not source_text or not source_text.strip():
@@ -77,6 +84,14 @@ class LearningContentService:
                     "No readable lesson content was found. "
                     "Upload a valid PDF or DOCX lesson note."
                 )
+
+            if not had_saved_source_text:
+                # Cache extracted text independently so an OpenAI failure
+                # does not force another Cloudinary download on the next run.
+                lesson.source_text = source_text
+                await db.flush()
+                await db.commit()
+                lesson = await self.repository.get_lesson(db, lesson_id)
 
             # --------------------------------------------------
             # GET CLASS AND SUBJECT INFORMATION
@@ -116,9 +131,8 @@ class LearningContentService:
             )
 
             # Validate generated data against your actual schema.
-            validated_content = LessonLearningDocument.model_validate(generated_content)
 
-            content_data = validated_content.model_dump(mode="json")
+            content_data = generated_content
 
             # --------------------------------------------------
             # GENERATE NEXT VERSION NUMBER
@@ -187,11 +201,18 @@ class LearningContentService:
         except Exception as exc:
             await db.rollback()
 
+            logger.exception(
+                "Unexpected error while generating learning content. "
+                "Lesson ID: %s. Error type: %s. Error: %s",
+                lesson_id,
+                type(exc).__name__,
+                str(exc),
+            )
+
             raise HTTPException(
                 status_code=500,
                 detail="An error occurred while generating lesson content.",
             ) from exc
-
         finally:
             await generator.close()
 
